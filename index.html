@@ -17,7 +17,8 @@
 *,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
 html{-webkit-text-size-adjust:100%}
 body{font-family:'DM Sans','SF Pro Display','Helvetica Neue',system-ui,sans-serif;background:#0c0e16;color:#e0e0ea;
-  min-height:100vh;min-height:100dvh;overflow-x:hidden;-webkit-font-smoothing:antialiased}
+  min-height:100vh;min-height:100dvh;overflow-x:hidden;-webkit-font-smoothing:antialiased;
+  -webkit-user-select:none;user-select:none;-webkit-touch-callout:none}
 #root{min-height:100vh;min-height:100dvh}
 .math{font-family:'STIX Two Text','Cambria Math','Times New Roman',Georgia,serif}
 .mono{font-family:'JetBrains Mono','SF Mono','Menlo','Consolas',monospace}
@@ -28,6 +29,7 @@ body{font-family:'DM Sans','SF Pro Display','Helvetica Neue',system-ui,sans-seri
 @keyframes ghostFadeOut{0%{opacity:.6}100%{opacity:0}}
 @keyframes drawLine{0%{stroke-dashoffset:2000}100%{stroke-dashoffset:0}}
 @keyframes tutPulse{0%,100%{box-shadow:0 0 0 9999px rgba(0,0,0,.72),0 0 0 3px #f0c86855}50%{box-shadow:0 0 0 9999px rgba(0,0,0,.72),0 0 0 8px #f0c868aa}}
+@keyframes slideUp{0%{transform:translateY(100%);opacity:0}100%{transform:translateY(0);opacity:1}}
 
 .safe-top{padding-top:env(safe-area-inset-top,0)}
 .safe-bottom{padding-bottom:env(safe-area-inset-bottom,0)}
@@ -78,9 +80,9 @@ button{font-family:inherit}
 .controls-col{flex:1;min-width:0}
 
 @media (min-aspect-ratio:1/1) and (min-width:640px){
-  .app-layout{flex-direction:row;gap:16px;align-items:start}
+  .app-layout{flex-direction:row;gap:12px;align-items:start}
   .graph-col{flex:1.3;position:sticky;top:0}
-  .controls-col{flex:1;max-height:100vh;overflow-y:auto;padding-bottom:40px}
+  .controls-col{flex:1;max-height:100vh;overflow-y:auto;padding-bottom:40px;padding-right:16px}
   .controls-col::-webkit-scrollbar{width:3px}
   .controls-col::-webkit-scrollbar-thumb{background:#252538;border-radius:2px}
 }
@@ -284,7 +286,9 @@ function Graph({m,b,n,h,ghostM,ghostB,ghostN,ghostH,showGhost,ghostKey,setGraphK
   return (
     <svg ref={svgRef} viewBox={`0 0 ${W} ${H}`}
       style={{width:'100%',height:'auto',borderRadius:16,
-        background:'#0a0c14',border:'1px solid #1a1c28',touchAction:'none',cursor:'crosshair'}}
+        background:'#0a0c14',border:'1px solid #1a1c28',touchAction:'none',cursor:'crosshair',
+        userSelect:'none',WebkitUserSelect:'none',WebkitTouchCallout:'none'}}
+      onContextMenu={e=>e.preventDefault()}
       onTouchStart={e=>{handlePointer(e);e.preventDefault()}}
       onTouchMove={e=>{handlePointer(e);e.preventDefault()}}
       onTouchEnd={()=>onProbeEnd()}
@@ -470,7 +474,7 @@ function Graph({m,b,n,h,ghostM,ghostB,ghostN,ghostH,showGhost,ghostKey,setGraphK
 // ═══════════════════════════════
 //  Parameter Slider
 // ═══════════════════════════════
-function ParamSlider({label,value,min,max,step,color,onChange,icon,description,id}){
+function ParamSlider({label,value,min,max,step,color,onChange,onRelease,icon,description,id}){
   return (
     <div style={{marginBottom:14}} id={id}>
       <div style={{display:'flex',justifyContent:'space-between',alignItems:'baseline',marginBottom:6}}>
@@ -484,7 +488,9 @@ function ParamSlider({label,value,min,max,step,color,onChange,icon,description,i
       </div>
       <input type="range" className="param-slider" style={{'--tc':color}}
         min={min} max={max} step={step} value={value}
-        onChange={e=>onChange(parseFloat(e.target.value))}/>
+        onChange={e=>onChange(parseFloat(e.target.value))}
+        onMouseUp={()=>onRelease&&onRelease()}
+        onTouchEnd={()=>onRelease&&onRelease()}/>
     </div>
   );
 }
@@ -515,7 +521,7 @@ function FunctionMachine({m,b,n,h,inputX,useFx}){
   const innerDisp=(()=>{
     if(n===0) return null;
     if(h===0){
-      return x<0&&n>1?`(${xStr})`:`${xStr}`;
+      return (x<0&&n>1)||mShow!==''?`(${xStr})`:`${xStr}`;
     }
     return `(${xStr}\u00a0${h>0?M:'+'}\u00a0${nice(Math.abs(h))})`;
   })();
@@ -524,7 +530,7 @@ function FunctionMachine({m,b,n,h,inputX,useFx}){
     <span style={{color:COLORS.b}}>{b>0?` + ${nice(b)}`:`\u00a0${M}\u00a0${nice(Math.abs(b))}`}</span>
   );
 
-  const lhsLabel=useFx?<><i>f</i>({xStr})</>:`y`;
+  const lhsLabel=<><i>f</i>({xStr})</>;
 
   let rhsNodes;
   if(m===0&&n!==0){
@@ -1832,8 +1838,10 @@ function App(){
   const [showTutorial,setShowTutorial]=useState(true);
   const [tutStep,setTutStep]=useState(0);
   const tutBlockRef=useRef(false);
+  const tutStepStartRef=useRef(Date.now());
   const advanceTutorial=useCallback(()=>{
     if(tutBlockRef.current) return;
+    if(Date.now()-tutStepStartRef.current < 1200) return;
     tutBlockRef.current=true;
     setTutStep(cur=>{
       const next=cur+1;
@@ -1841,10 +1849,12 @@ function App(){
         setTimeout(()=>{setShowTutorial(false);tutBlockRef.current=false;},450);
         return cur;
       }
+      tutStepStartRef.current=Date.now()+650;
       setTimeout(()=>{tutBlockRef.current=false;},650);
       return next;
     });
   },[]);
+  useEffect(()=>{tutStepStartRef.current=Date.now();},[tutStep]);
 
   useEffect(()=>{
     const mq=window.matchMedia('(min-aspect-ratio:1/1) and (min-width:640px)');
@@ -1870,9 +1880,11 @@ function App(){
 
   const handleProbe=(x,y)=>{
     setProbeX(x);setProbeY(y);setShowProbe(true);
+  };
+  const handleProbeEnd=()=>{
+    setShowProbe(false);
     if(showTutorial&&TUTORIAL_STEPS[tutStep]?.trigger==='graph_touch') advanceTutorial();
   };
-  const handleProbeEnd=()=>{setShowProbe(false)};
 
   // Presets
   const presets=[
@@ -1922,13 +1934,13 @@ function App(){
         </div>
       </header>
 
-      <main style={{maxWidth:1100,margin:'0 auto',padding:'16px 18px 40px'}}>
+      <main style={{padding:`12px 0 ${showMachine?280:40}px`}}>
         <div className="app-layout">
 
         {/* ── LEFT: Graph column ── */}
         <div className="graph-col">
           {/* Graph */}
-          <div id="tut-graph" style={{borderRadius:16,overflow:'hidden'}}>
+          <div id="tut-graph">
           <Graph m={m} b={b} n={n} h={h}
             ghostM={ghost.m} ghostB={ghost.b} ghostN={ghost.n} ghostH={ghost.h}
             showGhost={showGhost} ghostKey={ghostKey} setGraphKey={setGraphKey}
@@ -1967,16 +1979,16 @@ function App(){
         <div style={{background:'#10121c',borderRadius:14,padding:'18px 20px',border:'1px solid #1a1c28',marginTop:8}}>
           <ParamSlider id="tut-m" label="m" description={n===1?"slope":"coefficient"} color={COLORS.m}
             value={m} min={-5} max={5} step={0.25}
-            onChange={v=>{startGhost();setM(v);setActiveParam('m');endGhost();
-              if(showTutorial&&TUTORIAL_STEPS[tutStep]?.trigger==='slider_m') advanceTutorial();}}/>
+            onChange={v=>{startGhost();setM(v);setActiveParam('m');endGhost();}}
+            onRelease={()=>{if(showTutorial&&TUTORIAL_STEPS[tutStep]?.trigger==='slider_m') advanceTutorial();}}/>
           <ParamSlider id="tut-b" label="b" description="y-intercept / vertical shift" color={COLORS.b}
             value={b} min={-6} max={6} step={0.5}
-            onChange={v=>{startGhost();setB(v);setActiveParam('b');endGhost();
-              if(showTutorial&&TUTORIAL_STEPS[tutStep]?.trigger==='slider_b') advanceTutorial();}}/>
+            onChange={v=>{startGhost();setB(v);setActiveParam('b');endGhost();}}
+            onRelease={()=>{if(showTutorial&&TUTORIAL_STEPS[tutStep]?.trigger==='slider_b') advanceTutorial();}}/>
           <ParamSlider id="tut-h" label="h" description="horizontal shift" color={COLORS.h}
             value={h} min={-5} max={5} step={0.5}
-            onChange={v=>{startGhost();setH(v);setActiveParam('h');endGhost();
-              if(showTutorial&&TUTORIAL_STEPS[tutStep]?.trigger==='slider_h') advanceTutorial();}}/>
+            onChange={v=>{startGhost();setH(v);setActiveParam('h');endGhost();}}
+            onRelease={()=>{if(showTutorial&&TUTORIAL_STEPS[tutStep]?.trigger==='slider_h') advanceTutorial();}}/>
         </div>
 
         {/* Presets — quick parent functions */}
@@ -2016,13 +2028,6 @@ function App(){
             {showMachine?'Hide':'Show'} Function Machine
           </button>
         </div>
-        {showMachine&&(
-          <div style={{marginTop:10}}>
-            <FunctionMachine m={m} b={b} n={n} h={h}
-              inputX={showProbe&&probeX!=null?probeX:2}
-              useFx={useFx}/>
-          </div>
-        )}
 
         {/* Notation explanation */}
         <div style={{
@@ -2065,6 +2070,27 @@ function App(){
         )}
 
       </main>
+
+      {/* ── Fixed bottom Function Machine panel ── */}
+      {showMachine&&(
+        <div style={{
+          position:'fixed',bottom:0,left:0,right:0,zIndex:500,
+          background:'#10121c',borderTop:'2px solid #2a2c40',
+          boxShadow:'0 -8px 40px rgba(0,0,0,.7)',
+          animation:'slideUp .3s ease',
+          maxHeight:'55vh',overflowY:'auto',
+        }}>
+          <div style={{padding:'14px 20px 24px',position:'relative'}}>
+            <button onClick={()=>setShowMachine(false)} style={{
+              position:'absolute',top:10,right:16,background:'none',border:'none',
+              color:'#555',fontSize:22,cursor:'pointer',lineHeight:1,padding:'4px 8px',
+            }}>×</button>
+            <FunctionMachine m={m} b={b} n={n} h={h}
+              inputX={showProbe&&probeX!=null?probeX:2}
+              useFx={true}/>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
