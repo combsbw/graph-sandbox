@@ -27,6 +27,7 @@ body{font-family:'DM Sans','SF Pro Display','Helvetica Neue',system-ui,sans-seri
 @keyframes pulse{0%,100%{opacity:.6}50%{opacity:1}}
 @keyframes ghostFadeOut{0%{opacity:.6}100%{opacity:0}}
 @keyframes drawLine{0%{stroke-dashoffset:2000}100%{stroke-dashoffset:0}}
+@keyframes tutPulse{0%,100%{box-shadow:0 0 0 9999px rgba(0,0,0,.72),0 0 0 3px #f0c86855}50%{box-shadow:0 0 0 9999px rgba(0,0,0,.72),0 0 0 8px #f0c868aa}}
 
 .safe-top{padding-top:env(safe-area-inset-top,0)}
 .safe-bottom{padding-bottom:env(safe-area-inset-bottom,0)}
@@ -469,9 +470,9 @@ function Graph({m,b,n,h,ghostM,ghostB,ghostN,ghostH,showGhost,ghostKey,setGraphK
 // ═══════════════════════════════
 //  Parameter Slider
 // ═══════════════════════════════
-function ParamSlider({label,value,min,max,step,color,onChange,icon,description}){
+function ParamSlider({label,value,min,max,step,color,onChange,icon,description,id}){
   return (
-    <div style={{marginBottom:14}}>
+    <div style={{marginBottom:14}} id={id}>
       <div style={{display:'flex',justifyContent:'space-between',alignItems:'baseline',marginBottom:6}}>
         <div style={{display:'flex',alignItems:'baseline',gap:8}}>
           <span className="math" style={{fontSize:18,fontWeight:700,color,fontStyle:'italic'}}>{label}</span>
@@ -1635,47 +1636,167 @@ function Worksheet({m,b,n,h,setM,setB,setN,setH,startGhost,endGhost,setActivePar
 }
 
 const TUTORIAL_STEPS=[
-  {icon:'📐',title:'Welcome to Graph Sandbox!',body:'This interactive tool helps you build intuition for graphing equations. Let\'s take a 30-second tour of the key parts.'},
-  {icon:'📈',title:'The Interactive Graph',body:'The graph on the left shows your equation as a visual curve. Touch or click anywhere on the graph to read exact x and y values at that point.'},
-  {icon:'🎚️',title:'The Sliders',body:'The three sliders control the equation parameters:\n• m — slope or stretch\n• b — vertical shift (y-intercept)\n• h — horizontal shift\n\nDrag any slider and watch the graph update instantly!'},
-  {icon:'🔢',title:'The Live Equation',body:'Below the graph, the equation updates in real time as you adjust sliders. The colored letters match the slider colors — orange for m, blue for b, green for h.'},
-  {icon:'⚡',title:'Quick Presets',body:'Use the preset buttons (y=0, y=x, y=x², y=x³) to jump straight to common parent functions and start exploring from there.'},
-  {icon:'📝',title:'Guided Worksheet',body:'Work through the guided questions below the sandbox. Each question sets the graph to a specific equation — just read the graph and answer! You can always reset your progress.'},
-  {icon:'🎉',title:'You\'re ready!',body:'Start by dragging the m slider and watching the line change slope. Then try b and h. When you\'re comfortable, dive into the worksheet questions!'},
+  {
+    type:'modal',icon:'👋',
+    title:'Welcome to Graph Sandbox!',
+    body:"This quick interactive tour will have you actually move the controls. Each step only advances when you interact — much better than just reading!",
+  },
+  {
+    type:'interact',targetId:'tut-m',trigger:'slider_m',
+    title:'Slope (m) — drag this slider',
+    body:'Move it left or right. The line gets steeper or flatter. Watch the equation below the graph update as you drag!',
+    hint:'↔  Drag the m slider now',
+  },
+  {
+    type:'interact',targetId:'tut-b',trigger:'slider_b',
+    title:'Y-intercept (b) — drag this slider',
+    body:'Drag b to slide the whole line up or down. Notice the blue dot on the y-axis — that is the y-intercept moving.',
+    hint:'↔  Drag the b slider now',
+  },
+  {
+    type:'interact',targetId:'tut-h',trigger:'slider_h',
+    title:'Horizontal shift (h) — drag this slider',
+    body:'Drag h to shift the anchor point left or right. A green arrow appears on the graph showing the direction and size of the shift.',
+    hint:'↔  Drag the h slider now',
+  },
+  {
+    type:'interact',targetId:'tut-graph',trigger:'graph_touch',
+    title:'Trace the graph',
+    body:'Touch or click anywhere on the graph. The coordinates of that point on the curve will appear below the equation.',
+    hint:'👆  Touch or click the graph',
+  },
+  {
+    type:'interact',targetId:'tut-presets',trigger:'preset_click',
+    title:'Parent function presets',
+    body:'Tap any of these buttons to jump straight to y = x, y = x², or y = x³ and explore each parent function.',
+    hint:'👆  Tap a preset button',
+  },
+  {
+    type:'modal',icon:'🎉',
+    title:"You're all set!",
+    body:"Explore freely. When you're ready, scroll down to work through the guided worksheet questions — they walk you through each concept using the live graph.",
+  },
 ];
 
-function Tutorial({onClose}){
-  const [step,setStep]=useState(0);
-  const s=TUTORIAL_STEPS[step];
-  const isLast=step===TUTORIAL_STEPS.length-1;
-  return (
-    <div className="tutorial-overlay" onClick={e=>{if(e.target===e.currentTarget)onClose()}}>
-      <div className="tutorial-card">
-        <div style={{fontSize:36,marginBottom:12,textAlign:'center'}}>{s.icon}</div>
-        <h2 style={{fontSize:20,fontWeight:700,color:'#eaeaf2',marginBottom:10,textAlign:'center'}}>{s.title}</h2>
-        <p style={{fontSize:14,color:'#999',lineHeight:1.7,marginBottom:20,whiteSpace:'pre-line'}}>{s.body}</p>
-        {/* Step dots */}
-        <div style={{display:'flex',justifyContent:'center',gap:6,marginBottom:20}}>
-          {TUTORIAL_STEPS.map((_,i)=>(
-            <button key={i} onClick={()=>setStep(i)} style={{
-              width:8,height:8,borderRadius:'50%',border:'none',cursor:'pointer',
-              background:i===step?'#f0c868':'#2a2c40',transition:'background .2s',padding:0,
-            }}/>
-          ))}
-        </div>
-        <div style={{display:'flex',gap:10}}>
-          <button onClick={onClose} style={{
-            flex:1,padding:'12px',borderRadius:10,border:'1px solid #2a2c40',
-            background:'transparent',color:'#555',fontSize:13,fontWeight:600,cursor:'pointer',
-          }}>Skip</button>
-          <button onClick={()=>isLast?onClose():setStep(s=>s+1)} style={{
-            flex:2,padding:'12px',borderRadius:10,border:'none',
-            background:'linear-gradient(135deg,#f0c868,#6eb4e6)',
-            color:'#12141e',fontSize:14,fontWeight:700,cursor:'pointer',
-          }}>{isLast?'Get Started!':'Next →'}</button>
+function Tutorial({step:s,stepIdx,onAdvance,onClose}){
+  const [rect,setRect]=useState(null);
+  const isModal=s.type==='modal';
+
+  useEffect(()=>{
+    if(isModal||!s.targetId){setRect(null);return;}
+    const update=()=>{
+      const el=document.getElementById(s.targetId);
+      if(!el) return;
+      const r=el.getBoundingClientRect();
+      setRect({top:r.top,left:r.left,width:r.width,height:r.height});
+    };
+    // Scroll element into view on step change
+    const el=document.getElementById(s.targetId);
+    if(el) el.scrollIntoView({behavior:'smooth',block:'nearest',inline:'nearest'});
+    const t=setTimeout(update,120);
+    window.addEventListener('resize',update,{passive:true});
+    window.addEventListener('scroll',update,{passive:true});
+    const col=document.querySelector('.controls-col');
+    if(col) col.addEventListener('scroll',update,{passive:true});
+    const iv=setInterval(update,250);
+    return ()=>{clearTimeout(t);clearInterval(iv);
+      window.removeEventListener('resize',update);
+      window.removeEventListener('scroll',update);
+      if(col) col.removeEventListener('scroll',update);
+    };
+  },[s.targetId,isModal]);
+
+  if(isModal){
+    return (
+      <div style={{
+        position:'fixed',inset:0,background:'rgba(0,0,0,.82)',
+        zIndex:2000,display:'flex',alignItems:'center',justifyContent:'center',
+        padding:20,backdropFilter:'blur(4px)',
+      }}>
+        <div style={{
+          background:'#12141e',borderRadius:20,padding:'30px 28px',
+          maxWidth:400,width:'100%',border:'1px solid #2a2c40',
+          animation:'slideIn .3s ease',
+        }}>
+          <div style={{fontSize:42,textAlign:'center',marginBottom:12}}>{s.icon}</div>
+          <h2 style={{fontSize:21,fontWeight:700,color:'#eaeaf2',textAlign:'center',marginBottom:10,lineHeight:1.3}}>{s.title}</h2>
+          <p style={{fontSize:14,color:'#999',lineHeight:1.75,marginBottom:24,textAlign:'center'}}>{s.body}</p>
+          <div style={{display:'flex',gap:10}}>
+            <button onClick={onClose} style={{
+              flex:1,padding:'12px',borderRadius:10,border:'1px solid #2a2c40',
+              background:'transparent',color:'#555',fontSize:13,fontWeight:600,cursor:'pointer',
+            }}>Skip Tour</button>
+            <button onClick={onAdvance} style={{
+              flex:2,padding:'12px',borderRadius:10,border:'none',
+              background:'linear-gradient(135deg,#f0c868,#6eb4e6)',
+              color:'#0c0e16',fontSize:14,fontWeight:700,cursor:'pointer',
+            }}>Let's Go! →</button>
+          </div>
         </div>
       </div>
-    </div>
+    );
+  }
+
+  // Interact step — spotlight overlay
+  if(!rect) return (
+    <div style={{position:'fixed',inset:0,background:'rgba(0,0,0,.6)',zIndex:2000,pointerEvents:'none'}}/>
+  );
+
+  const PAD=10;
+  const sTop=rect.top-PAD, sLeft=rect.left-PAD;
+  const sW=rect.width+PAD*2, sH=rect.height+PAD*2;
+  const TW=250, vW=window.innerWidth, vH=window.innerHeight;
+  const onRight=sLeft+sW/2 > vW/2;
+  const tLeft=onRight ? Math.max(8,sLeft-TW-14) : Math.min(vW-TW-8,sLeft+sW+14);
+  const tTop=Math.max(8,Math.min(sTop+sH/2-90, vH-240));
+
+  // Step counter dots
+  const dots=TUTORIAL_STEPS.map((_,i)=>(
+    <div key={i} style={{
+      width:6,height:6,borderRadius:'50%',
+      background:i===stepIdx?'#f0c868':i<stepIdx?'#5cc8b0':'#2a2c40',
+      transition:'background .3s',
+    }}/>
+  ));
+
+  return (
+    <>
+      {/* Full-screen click-through backdrop — pointer-events none so user can interact */}
+      <div style={{position:'fixed',inset:0,zIndex:2000,pointerEvents:'none'}}/>
+
+      {/* Spotlight: box-shadow creates the dark surround with a bright cutout */}
+      <div style={{
+        position:'fixed',
+        top:sTop,left:sLeft,width:sW,height:sH,
+        borderRadius:14,zIndex:2001,
+        pointerEvents:'none',
+        animation:'tutPulse 2s ease-in-out infinite',
+      }}/>
+
+      {/* Tooltip card — has pointer-events so buttons work */}
+      <div style={{
+        position:'fixed',top:tTop,left:tLeft,width:TW,
+        background:'#12141e',borderRadius:14,padding:'16px 16px 14px',
+        border:'1px solid #f0c86855',zIndex:2002,
+        boxShadow:'0 10px 40px rgba(0,0,0,.6)',
+        animation:'slideIn .25s ease',
+      }}>
+        {/* Progress dots */}
+        <div style={{display:'flex',gap:5,marginBottom:10,justifyContent:'center'}}>{dots}</div>
+        <div style={{fontSize:13,fontWeight:700,color:'#f0c868',marginBottom:6,lineHeight:1.3}}>{s.title}</div>
+        <div style={{fontSize:12,color:'#aaa',lineHeight:1.65,marginBottom:11}}>{s.body}</div>
+        <div style={{
+          fontSize:12,fontWeight:700,color:'#f0c868',letterSpacing:'.02em',
+          padding:'7px 10px',background:'#f0c86815',borderRadius:8,
+          textAlign:'center',marginBottom:10,animation:'pulse 1.5s infinite',
+        }}>{s.hint}</div>
+        <button onClick={onAdvance} style={{
+          width:'100%',padding:'7px',borderRadius:8,
+          border:'1px solid #2a2c40',background:'transparent',
+          color:'#555',fontSize:11,fontWeight:600,cursor:'pointer',
+        }}>Skip this step →</button>
+      </div>
+    </>
   );
 }
 
@@ -1709,6 +1830,21 @@ function App(){
   const [isLandscape,setIsLandscape]=useState(false);
   const ghostTimer=useRef(null);
   const [showTutorial,setShowTutorial]=useState(true);
+  const [tutStep,setTutStep]=useState(0);
+  const tutBlockRef=useRef(false);
+  const advanceTutorial=useCallback(()=>{
+    if(tutBlockRef.current) return;
+    tutBlockRef.current=true;
+    setTutStep(cur=>{
+      const next=cur+1;
+      if(next>=TUTORIAL_STEPS.length){
+        setTimeout(()=>{setShowTutorial(false);tutBlockRef.current=false;},450);
+        return cur;
+      }
+      setTimeout(()=>{tutBlockRef.current=false;},650);
+      return next;
+    });
+  },[]);
 
   useEffect(()=>{
     const mq=window.matchMedia('(min-aspect-ratio:1/1) and (min-width:640px)');
@@ -1732,7 +1868,10 @@ function App(){
     setGhostKey(k=>k+1);
   };
 
-  const handleProbe=(x,y)=>{setProbeX(x);setProbeY(y);setShowProbe(true)};
+  const handleProbe=(x,y)=>{
+    setProbeX(x);setProbeY(y);setShowProbe(true);
+    if(showTutorial&&TUTORIAL_STEPS[tutStep]?.trigger==='graph_touch') advanceTutorial();
+  };
   const handleProbeEnd=()=>{setShowProbe(false)};
 
   // Presets
@@ -1747,11 +1886,16 @@ function App(){
     startGhost();
     setM(p.m);setB(p.b);setN(p.n);setH(p.h);
     endGhost();
+    if(showTutorial&&TUTORIAL_STEPS[tutStep]?.trigger==='preset_click') advanceTutorial();
   };
 
   return (
     <div className="safe-top safe-bottom" style={{minHeight:'100vh'}}>
-      {showTutorial&&<Tutorial onClose={()=>setShowTutorial(false)}/>}
+      {showTutorial&&<Tutorial
+        step={TUTORIAL_STEPS[tutStep]}
+        stepIdx={tutStep}
+        onAdvance={advanceTutorial}
+        onClose={()=>setShowTutorial(false)}/>}
       <div style={{position:'fixed',inset:0,opacity:.01,pointerEvents:'none',
         backgroundImage:'radial-gradient(circle at 30% 20%,#6eb4e6 1px,transparent 1px)',
         backgroundSize:'60px 60px'}}/>
@@ -1770,7 +1914,7 @@ function App(){
             onClick={()=>setUseFx(false)}>y =</button>
           <button className={`toggle-chip${useFx?' active':''}`} style={{'--tc':'#6eb4e6'}}
             onClick={()=>setUseFx(true)}><i className="math">f</i>(x) =</button>
-          <button onClick={()=>setShowTutorial(true)} style={{
+          <button onClick={()=>{setTutStep(0);tutBlockRef.current=false;setShowTutorial(true);}} style={{
             padding:'6px 10px',borderRadius:8,border:'1px solid #2a2c40',
             background:'#12141e',color:'#555',fontSize:12,fontWeight:700,cursor:'pointer',
             marginLeft:4,
@@ -1784,10 +1928,12 @@ function App(){
         {/* ── LEFT: Graph column ── */}
         <div className="graph-col">
           {/* Graph */}
+          <div id="tut-graph" style={{borderRadius:16,overflow:'hidden'}}>
           <Graph m={m} b={b} n={n} h={h}
             ghostM={ghost.m} ghostB={ghost.b} ghostN={ghost.n} ghostH={ghost.h}
             showGhost={showGhost} ghostKey={ghostKey} setGraphKey={setGraphKey}
             onProbe={handleProbe} onProbeEnd={handleProbeEnd}/>
+          </div>
 
           {/* Equation display — below the graph, 1.5× larger */}
           <EquationDisplay m={m} b={b} n={n} h={h} useFx={useFx}
@@ -1819,19 +1965,22 @@ function App(){
 
         {/* Sliders */}
         <div style={{background:'#10121c',borderRadius:14,padding:'18px 20px',border:'1px solid #1a1c28',marginTop:8}}>
-          <ParamSlider label="m" description={n===1?"slope":"coefficient"} color={COLORS.m}
+          <ParamSlider id="tut-m" label="m" description={n===1?"slope":"coefficient"} color={COLORS.m}
             value={m} min={-5} max={5} step={0.25}
-            onChange={v=>{startGhost();setM(v);setActiveParam('m');endGhost()}}/>
-          <ParamSlider label="b" description="y-intercept / vertical shift" color={COLORS.b}
+            onChange={v=>{startGhost();setM(v);setActiveParam('m');endGhost();
+              if(showTutorial&&TUTORIAL_STEPS[tutStep]?.trigger==='slider_m') advanceTutorial();}}/>
+          <ParamSlider id="tut-b" label="b" description="y-intercept / vertical shift" color={COLORS.b}
             value={b} min={-6} max={6} step={0.5}
-            onChange={v=>{startGhost();setB(v);setActiveParam('b');endGhost()}}/>
-          <ParamSlider label="h" description="horizontal shift" color={COLORS.h}
+            onChange={v=>{startGhost();setB(v);setActiveParam('b');endGhost();
+              if(showTutorial&&TUTORIAL_STEPS[tutStep]?.trigger==='slider_b') advanceTutorial();}}/>
+          <ParamSlider id="tut-h" label="h" description="horizontal shift" color={COLORS.h}
             value={h} min={-5} max={5} step={0.5}
-            onChange={v=>{startGhost();setH(v);setActiveParam('h');endGhost()}}/>
+            onChange={v=>{startGhost();setH(v);setActiveParam('h');endGhost();
+              if(showTutorial&&TUTORIAL_STEPS[tutStep]?.trigger==='slider_h') advanceTutorial();}}/>
         </div>
 
         {/* Presets — quick parent functions */}
-        <div style={{marginTop:10}}>
+        <div id="tut-presets" style={{marginTop:10}}>
           <div style={{fontSize:9,fontWeight:700,color:'#3a3c55',textTransform:'uppercase',letterSpacing:'.1em',marginBottom:6}}>
             Quick Presets
           </div>
