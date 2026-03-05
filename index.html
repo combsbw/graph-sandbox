@@ -1,0 +1,1942 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover,user-scalable=no">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="apple-mobile-web-app-title" content="GraphSand">
+<meta name="theme-color" content="#0c0e16">
+<link rel="manifest" href="manifest.json">
+<link rel="apple-touch-icon" href="icons/icon-192.png">
+<title>Graph Sandbox</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=STIX+Two+Text:ital,wght@0,400;0,600;0,700;1,400;1,700&family=JetBrains+Mono:wght@400;500;600&family=DM+Sans:wght@400;500;600;700&display=swap" rel="stylesheet">
+<style>
+*,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
+html{-webkit-text-size-adjust:100%}
+body{font-family:'DM Sans','SF Pro Display','Helvetica Neue',system-ui,sans-serif;background:#0c0e16;color:#e0e0ea;
+  min-height:100vh;min-height:100dvh;overflow-x:hidden;-webkit-font-smoothing:antialiased}
+#root{min-height:100vh;min-height:100dvh}
+.math{font-family:'STIX Two Text','Cambria Math','Times New Roman',Georgia,serif}
+.mono{font-family:'JetBrains Mono','SF Mono','Menlo','Consolas',monospace}
+
+@keyframes fadeIn{0%{opacity:0}100%{opacity:1}}
+@keyframes slideIn{0%{opacity:0;transform:translateY(10px)}100%{opacity:1;transform:translateY(0)}}
+@keyframes pulse{0%,100%{opacity:.6}50%{opacity:1}}
+@keyframes ghostFadeOut{0%{opacity:.6}100%{opacity:0}}
+@keyframes drawLine{0%{stroke-dashoffset:2000}100%{stroke-dashoffset:0}}
+
+.safe-top{padding-top:env(safe-area-inset-top,0)}
+.safe-bottom{padding-bottom:env(safe-area-inset-bottom,0)}
+button{font-family:inherit}
+::-webkit-scrollbar{width:4px}
+::-webkit-scrollbar-thumb{background:#252538;border-radius:2px}
+
+/* ── Slider ── */
+.param-slider{
+  -webkit-appearance:none;appearance:none;width:100%;height:6px;
+  border-radius:3px;outline:none;
+  background:#1a1c28;
+}
+.param-slider::-webkit-slider-thumb{
+  -webkit-appearance:none;width:28px;height:28px;border-radius:50%;
+  cursor:pointer;border:3px solid var(--tc,#6eb4e6);
+  background:#12141e;box-shadow:0 0 10px var(--tc,#6eb4e6)30;
+  transition:transform .15s;
+}
+.param-slider::-webkit-slider-thumb:active{transform:scale(1.2)}
+
+/* ── Toggle chips ── */
+.toggle-chip{
+  padding:6px 14px;border-radius:8px;font-size:12px;font-weight:600;
+  cursor:pointer;border:1.5px solid #2a2a40;background:#12141e;
+  color:#666;transition:all .2s;
+  -webkit-tap-highlight-color:transparent;
+}
+.toggle-chip.active{
+  border-color:var(--tc,#6eb4e6)55;
+  color:var(--tc,#6eb4e6);
+  background:var(--tc,#6eb4e6)10;
+}
+
+/* ── Function machine ── */
+.machine-box{
+  border:2px solid #2a2c40;border-radius:16px;
+  background:#10121c;padding:16px 20px;
+  position:relative;overflow:hidden;
+}
+.machine-arrow{
+  color:#3a3c55;font-size:22px;display:flex;align-items:center;
+}
+
+/* ── Responsive landscape layout ── */
+.app-layout{display:flex;flex-direction:column}
+.graph-col{flex:1;min-width:0}
+.controls-col{flex:1;min-width:0}
+
+@media (min-aspect-ratio:1/1) and (min-width:640px){
+  .app-layout{flex-direction:row;gap:16px;align-items:start}
+  .graph-col{flex:1.3;position:sticky;top:0}
+  .controls-col{flex:1;max-height:100vh;overflow-y:auto;padding-bottom:40px}
+  .controls-col::-webkit-scrollbar{width:3px}
+  .controls-col::-webkit-scrollbar-thumb{background:#252538;border-radius:2px}
+}
+
+@media (orientation:landscape) and (max-height:500px){
+  .compact-header{padding:8px 16px 6px !important}
+  .compact-header h1{font-size:18px !important}
+  .compact-header p{display:none}
+}
+.tutorial-overlay{position:fixed;inset:0;background:rgba(0,0,0,.75);z-index:1000;display:flex;align-items:center;justify-content:center;padding:20px;backdrop-filter:blur(4px)}
+.tutorial-card{background:#12141e;border-radius:20px;padding:28px 30px;max-width:420px;width:100%;border:1px solid #2a2c40;animation:slideIn .3s ease}
+</style>
+</head>
+<body>
+<div id="root"></div>
+<script src="https://cdn.jsdelivr.net/npm/react@18/umd/react.production.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/react-dom@18/umd/react-dom.production.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/@babel/standalone@7/babel.min.js"></script>
+<script type="text/babel" data-type="module">
+const {useState,useEffect,useCallback,useRef,useMemo} = React;
+
+// ═══════════════════════════════
+//  Constants & Helpers
+// ═══════════════════════════════
+const M='\u2212',SUP='⁰¹²³⁴⁵⁶⁷⁸⁹';
+const sup=n=>`${n}`.split('').map(c=>c==='-'?'\u207b':SUP[+c]||c).join('');
+const clamp=(v,lo,hi)=>Math.max(lo,Math.min(hi,v));
+const round2=v=>Math.round(v*100)/100;
+const nice=v=>{const r=round2(v);return r===Math.floor(r)?`${r}`:r.toFixed(2).replace(/0$/,'')};
+
+const COLORS={
+  m:'#e88c6c',   // slope/coefficient — warm orange
+  b:'#6eb4e6',   // y-intercept — blue
+  n:'#b088e0',   // exponent — purple
+  h:'#6ecaa0',   // horizontal shift — green
+  curve:'#f0c868',  // the curve itself
+  curveShadow:'#f0c86830',
+  grid:'#1a1c28',
+  axis:'#2a2c40',
+  bg:'#0c0e16',
+};
+
+// ═══════════════════════════════
+//  Equation Renderer
+// ═══════════════════════════════
+function EquationDisplay({m,b,n,h,useFx,probeX,probeY,showProbe}){
+  const sz=39;
+
+  // Build the live equation as React nodes
+  const mAbs=Math.abs(m);
+  const bAbs=Math.abs(b);
+  const hAbs=Math.abs(h);
+
+  const mColor=COLORS.m, bColor=COLORS.b, nColor=COLORS.n, hColor=COLORS.h;
+
+  // Coefficient part
+  const mShow = mAbs===1&&n===1 ? '' : mAbs===1 ? '' : nice(mAbs);
+  const mSign = m<0 ? M : '';
+
+  // x part with shift
+  let xPart=null;
+  if(n===0){
+    xPart=null; // constant
+  } else {
+    const inner=h===0 ? <i>x</i> :
+      <span>(<i>x</i>{h>0?<span style={{color:hColor}}> {M} {nice(hAbs)}</span>:<span style={{color:hColor}}> + {nice(hAbs)}</span>})</span>;
+
+    if(n===1){
+      xPart=inner;
+    } else {
+      xPart=<span>{h!==0||n>1?<span>{inner}</span>:inner}<sup style={{fontSize:'.6em',color:nColor,position:'relative',top:'-.4em'}}>{n}</sup></span>;
+    }
+  }
+
+  // b part
+  const bPart=b===0?null:(
+    <span style={{color:bColor}}>
+      {b>0?' + ':` ${M} `}{nice(bAbs)}
+    </span>
+  );
+
+  return (
+    <div style={{textAlign:'center',padding:'12px 0'}}>
+      {/* Main equation */}
+      <div className="math" style={{fontSize:sz,fontWeight:700,color:'#eaeaf2',lineHeight:1.4}}>
+        <span style={{color:'#888'}}>{useFx?<><i>f</i>(<i>x</i>)</>:'y'}</span>
+        <span style={{color:'#3a3c55'}}> = </span>
+        {m===0&&b===0?<span>0</span>:
+         m===0?<span style={{color:bColor}}>{nice(b)}</span>:
+        <>
+          {mSign&&<span style={{color:mColor}}>{mSign}</span>}
+          {mShow&&<span style={{color:mColor}}>{mShow}</span>}
+          {xPart}
+          {bPart}
+        </>}
+      </div>
+
+      {/* Probe readout */}
+      {showProbe&&probeX!=null&&(
+        <div className="mono" style={{fontSize:13,color:'#888',marginTop:6,animation:'fadeIn .2s ease'}}>
+          {useFx?<span><i className="math">f</i>({nice(probeX)}) = {nice(probeY)}</span>:
+           <span>x = {nice(probeX)}, y = {nice(probeY)}</span>}
+        </div>
+      )}
+    </div>
+  );
+}
+
+// ═══════════════════════════════
+//  Interactive Graph (SVG)
+// ═══════════════════════════════
+function Graph({m,b,n,h,ghostM,ghostB,ghostN,ghostH,showGhost,ghostKey,setGraphKey,onProbe,onProbeEnd}){
+  const svgRef=useRef(null);
+  const W=600,H=600,pad=40;
+  const xRange=[-10,10],yRange=[-10,10];
+  const xSpan=xRange[1]-xRange[0],ySpan=yRange[1]-yRange[0];
+
+  const sx=x=>pad+(x-xRange[0])/xSpan*(W-2*pad);
+  const sy=y=>H-pad-(y-yRange[0])/ySpan*(H-2*pad);
+  const invX=px=>(px-pad)/(W-2*pad)*xSpan+xRange[0];
+  const invY=py=>((H-pad-py)/(H-2*pad))*ySpan+yRange[0];
+
+  const f=(x,_m=m,_b=b,_n=n,_h=h)=>{
+    const v=x-_h;
+    return _m*Math.pow(v,_n)+_b;
+  };
+
+  // Generate curve path
+  const makePath=(_m,_b,_n,_h)=>{
+    const steps=300;
+    let d='';
+    for(let i=0;i<=steps;i++){
+      const x=xRange[0]+(xRange[1]-xRange[0])*(i/steps);
+      const y=f(x,_m,_b,_n,_h);
+      if(!isFinite(y)||Math.abs(y)>50) continue;
+      const px=sx(x),py=sy(y);
+      d+=(d?'L':'M')+`${px.toFixed(1)},${py.toFixed(1)}`;
+    }
+    return d;
+  };
+
+  const mainPath=useMemo(()=>makePath(m,b,n,h),[m,b,n,h]);
+  const ghostPath=useMemo(()=>showGhost?makePath(ghostM,ghostB,ghostN,ghostH):'',[showGhost,ghostM,ghostB,ghostN,ghostH]);
+
+  // Grid lines
+  const gridLines=useMemo(()=>{
+    const lines=[];
+    for(let x=Math.ceil(xRange[0]);x<=xRange[1];x++){
+      lines.push(<line key={`gx${x}`} x1={sx(x)} y1={pad} x2={sx(x)} y2={H-pad}
+        stroke={x===0?COLORS.axis:COLORS.grid} strokeWidth={x===0?2:1}/>);
+    }
+    for(let y=Math.ceil(yRange[0]);y<=yRange[1];y++){
+      lines.push(<line key={`gy${y}`} x1={pad} y1={sy(y)} x2={W-pad} y2={sy(y)}
+        stroke={y===0?COLORS.axis:COLORS.grid} strokeWidth={y===0?2:1}/>);
+    }
+    return lines;
+  },[]);
+
+  // Tick labels
+  const ticks=useMemo(()=>{
+    const t=[];
+    for(let x=Math.ceil(xRange[0]);x<=xRange[1];x++){
+      if(x===0) continue;
+      t.push(<text key={`tx${x}`} x={sx(x)} y={sy(0)+16} fill="#3a3c55" fontSize="10"
+        textAnchor="middle" fontFamily="JetBrains Mono">{x}</text>);
+    }
+    for(let y=Math.ceil(yRange[0]);y<=yRange[1];y++){
+      if(y===0) continue;
+      t.push(<text key={`ty${y}`} x={sx(0)-10} y={sy(y)+4} fill="#3a3c55" fontSize="10"
+        textAnchor="end" fontFamily="JetBrains Mono">{y}</text>);
+    }
+    return t;
+  },[]);
+
+  // Special points
+  const yInt=f(0); // y-intercept
+  const yIntOnScreen=yInt>=-10&&yInt<=10;
+
+  // Vertex/anchor point at (h, b)
+  const vertexOnScreen=b>=-10&&b<=10&&h>=-10&&h<=10;
+
+  // Touch/mouse probe
+  const handlePointer=(e)=>{
+    const svg=svgRef.current;
+    if(!svg) return;
+    const rect=svg.getBoundingClientRect();
+    const scaleX=W/rect.width, scaleY=H/rect.height;
+    let cx,cy;
+    if(e.touches){
+      cx=(e.touches[0].clientX-rect.left)*scaleX;
+      cy=(e.touches[0].clientY-rect.top)*scaleY;
+    } else {
+      cx=(e.clientX-rect.left)*scaleX;
+      cy=(e.clientY-rect.top)*scaleY;
+    }
+    const x=round2(invX(cx));
+    const y=round2(f(x));
+    onProbe(x,y);
+  };
+
+  return (
+    <svg ref={svgRef} viewBox={`0 0 ${W} ${H}`}
+      style={{width:'100%',height:'auto',borderRadius:16,
+        background:'#0a0c14',border:'1px solid #1a1c28',touchAction:'none',cursor:'crosshair'}}
+      onTouchStart={e=>{handlePointer(e);e.preventDefault()}}
+      onTouchMove={e=>{handlePointer(e);e.preventDefault()}}
+      onTouchEnd={()=>onProbeEnd()}
+      onMouseDown={handlePointer}
+      onMouseMove={e=>{if(e.buttons)handlePointer(e)}}
+      onMouseUp={()=>onProbeEnd()}
+      onMouseLeave={()=>onProbeEnd()}
+    >
+      {/* Grid */}
+      {gridLines}
+
+      {/* Axis arrows */}
+      <polygon points={`${sx(0)},${pad-8} ${sx(0)-5},${pad+2} ${sx(0)+5},${pad+2}`} fill={COLORS.axis}/>
+      <polygon points={`${W-pad+8},${sy(0)} ${W-pad-2},${sy(0)-5} ${W-pad-2},${sy(0)+5}`} fill={COLORS.axis}/>
+      <text x={W-pad+6} y={sy(0)-8} fill="#555" fontSize="13" fontFamily="STIX Two Text" fontStyle="italic">x</text>
+      <text x={sx(0)+8} y={pad-4} fill="#555" fontSize="13" fontFamily="STIX Two Text" fontStyle="italic">y</text>
+
+      {/* Ticks */}
+      {ticks}
+
+      {/* Ghost curve (previous state) — visible amber dashed line */}
+      {showGhost&&ghostPath&&(
+        <path key={ghostKey} d={ghostPath} fill="none" stroke="#e8963c" strokeWidth="2.5"
+          strokeDasharray="9,5" strokeLinejoin="round"
+          style={{animation:ghostKey>0?'ghostFadeOut 1.5s ease forwards':undefined,opacity:.6}}/>
+      )}
+
+      {/* Main curve glow / trail — animates on Set Graph press */}
+      <path key={`glow-${setGraphKey}`} d={mainPath} fill="none" stroke={COLORS.curveShadow} strokeWidth="14"
+        strokeLinejoin="round" strokeLinecap="round"
+        style={{strokeDasharray:2000,animation:'drawLine 0.8s ease forwards'}}/>
+
+      {/* Main curve — animates on Set Graph press */}
+      <path key={`main-${setGraphKey}`} d={mainPath} fill="none" stroke={COLORS.curve} strokeWidth="3"
+        strokeLinejoin="round" strokeLinecap="round"
+        style={{strokeDasharray:2000,animation:'drawLine 0.6s ease forwards'}}/>
+
+      {/* Y-intercept dot */}
+      {yIntOnScreen&&(
+        <g>
+          <circle cx={sx(0)} cy={sy(yInt)} r="7" fill={COLORS.b} opacity=".25"/>
+          <circle cx={sx(0)} cy={sy(yInt)} r="4" fill={COLORS.b}/>
+          {/* Label */}
+          <rect x={sx(0)+10} y={sy(yInt)-10} width="52" height="20" rx="6"
+            fill="#0c0e16" fillOpacity=".85" stroke={COLORS.b} strokeWidth="1" strokeOpacity=".3"/>
+          <text x={sx(0)+36} y={sy(yInt)+4} fill={COLORS.b}
+            fontSize="12" textAnchor="middle" fontFamily="DM Sans" fontWeight="700">
+            b = {nice(b)}
+          </text>
+        </g>
+      )}
+
+      {/* Vertex/shift point at (h, b) for non-linear */}
+      {vertexOnScreen&&n!==1&&(
+        <g>
+          <circle cx={sx(h)} cy={sy(b)} r="8" fill={COLORS.h} opacity=".2"/>
+          <circle cx={sx(h)} cy={sy(b)} r="5" fill={COLORS.h}/>
+        </g>
+      )}
+
+      {/* ── Horizontal shift visualization ── */}
+      {h!==0&&(()=>{
+        // Reference y-level: for linear, use y=b (the y-intercept level)
+        // For non-linear, use y=b (the vertex)
+        const refY = b;
+        const refYScreen = refY>=-8&&refY<=8;
+        // The "anchor point" is at (h, f(h)) = (h, m*0^n + b) = (h, b)
+        // The "unshifted anchor" would be at (0, b)
+        const anchorX = h;
+        const anchorY = f(h); // = m*(h-h)^n + b = b (for any n)
+        const unshiftedX = 0;
+        const unshiftedY = b;
+        const showAnchor = Math.abs(anchorY)<=10 && Math.abs(h)<=10;
+
+        if(!showAnchor) return null;
+
+        return <g>
+          {/* Horizontal track line at y=b level */}
+          <line x1={sx(Math.min(0,h)-0.5)} y1={sy(b)} x2={sx(Math.max(0,h)+0.5)} y2={sy(b)}
+            stroke={COLORS.h} strokeWidth="2.5" strokeDasharray="6,4" opacity=".5"/>
+
+          {/* Unshifted anchor (ghost dot at origin) */}
+          <circle cx={sx(0)} cy={sy(b)} r="6" fill="none" stroke={COLORS.h} strokeWidth="1.5"
+            strokeDasharray="3,2" opacity=".5"/>
+
+          {/* Arrow from unshifted to shifted position */}
+          {Math.abs(h)>=0.5&&(
+            <g>
+              {/* Arrow shaft */}
+              <line x1={sx(0)} y1={sy(b)} x2={sx(h)-(h>0?8:-8)} y2={sy(b)}
+                stroke={COLORS.h} strokeWidth="3" opacity=".7"/>
+              {/* Arrowhead */}
+              <polygon
+                points={h>0
+                  ?`${sx(h)},${sy(b)} ${sx(h)-10},${sy(b)-6} ${sx(h)-10},${sy(b)+6}`
+                  :`${sx(h)},${sy(b)} ${sx(h)+10},${sy(b)-6} ${sx(h)+10},${sy(b)+6}`}
+                fill={COLORS.h} opacity=".7"/>
+            </g>
+          )}
+
+          {/* Shifted anchor point (solid) */}
+          <circle cx={sx(h)} cy={sy(b)} r="7" fill={COLORS.h} opacity=".35"/>
+          <circle cx={sx(h)} cy={sy(b)} r="5" fill={COLORS.h}/>
+
+          {/* Shift distance label */}
+          {(()=>{
+            const labelX=(sx(0)+sx(h))/2;
+            const labelY=sy(b)-(n===1?22:26);
+            const txt=`h = ${h>0?'+':''}${nice(h)}`;
+            const w=txt.length*8+16;
+            return <g>
+              <rect x={labelX-w/2} y={labelY-11} width={w} height="22" rx="7"
+                fill="#0c0e16" fillOpacity=".9" stroke={COLORS.h} strokeWidth="1.5" strokeOpacity=".4"/>
+              <text x={labelX} y={labelY+4} fill={COLORS.h}
+                fontSize="13" textAnchor="middle" fontFamily="DM Sans" fontWeight="700">{txt}</text>
+            </g>;
+          })()}
+
+          {/* For LINEAR: show ghost of unshifted line so movement is visible */}
+          {n===1&&(()=>{
+            const ghostPath2=makePath(m,b,1,0); // unshifted version
+            return <g>
+              <path d={ghostPath2} fill="none" stroke={COLORS.h} strokeWidth="1.5" opacity=".12"
+                strokeDasharray="8,6" strokeLinejoin="round"/>
+              {/* "h=0" label on ghost line */}
+              {Math.abs(b)<=7&&(
+                <g>
+                  <rect x={sx(-3)-20} y={sy(f(-3,m,b,1,0))-22} width="44" height="18" rx="5"
+                    fill="#0c0e16" fillOpacity=".8" stroke={COLORS.h} strokeWidth="1" strokeOpacity=".15"/>
+                  <text x={sx(-3)+2} y={sy(f(-3,m,b,1,0))-9} fill={COLORS.h}
+                    fontSize="10" textAnchor="middle" fontFamily="DM Sans" fontWeight="600" opacity=".35">h = 0</text>
+                </g>
+              )}
+            </g>;
+          })()}
+
+          {/* Vertical dashed line down from anchor to x-axis for context */}
+          {Math.abs(b)>0.5&&(
+            <line x1={sx(h)} y1={sy(b)} x2={sx(h)} y2={sy(0)}
+              stroke={COLORS.h} strokeWidth="1" strokeDasharray="3,3" opacity=".2"/>
+          )}
+          {/* h tick on x-axis */}
+          <circle cx={sx(h)} cy={sy(0)} r="3" fill={COLORS.h} opacity=".4"/>
+        </g>;
+      })()}
+
+      {/* Slope indicator: rise/run triangle at x=h+1 */}
+      {n===1&&m!==0&&Math.abs(m)<=8&&(()=>{
+        const x0=h, y0=f(h);
+        const x1=h+1, y1=f(h+1);
+        if(Math.abs(y0)>8||Math.abs(y1)>8) return null;
+        const runLabelX=(sx(x0)+sx(x1))/2;
+        const runLabelY=sy(y0)+(m>0?20:-14);
+        const riseLabelX=sx(x1)+(m>0?14:-50);
+        const riseLabelY=(sy(y0)+sy(y1))/2+5;
+        return <g>
+          {/* Run line */}
+          <line x1={sx(x0)} y1={sy(y0)} x2={sx(x1)} y2={sy(y0)}
+            stroke={COLORS.m} strokeWidth="3" strokeDasharray="6,3" opacity=".7"/>
+          {/* Rise line */}
+          <line x1={sx(x1)} y1={sy(y0)} x2={sx(x1)} y2={sy(y1)}
+            stroke={COLORS.m} strokeWidth="3" opacity=".7"/>
+          {/* Run label with background */}
+          <rect x={runLabelX-28} y={runLabelY-13} width="56" height="20" rx="6"
+            fill="#0c0e16" fillOpacity=".85" stroke={COLORS.m} strokeWidth="1" strokeOpacity=".3"/>
+          <text x={runLabelX} y={runLabelY+2} fill={COLORS.m}
+            fontSize="14" textAnchor="middle" fontFamily="DM Sans" fontWeight="700">run: 1</text>
+          {/* Rise label with background */}
+          <rect x={riseLabelX-6} y={riseLabelY-13} width={`${50+nice(m).length*4}`} height="20" rx="6"
+            fill="#0c0e16" fillOpacity=".85" stroke={COLORS.m} strokeWidth="1" strokeOpacity=".3"/>
+          <text x={riseLabelX+22} y={riseLabelY+2} fill={COLORS.m}
+            fontSize="14" textAnchor="middle" fontFamily="DM Sans" fontWeight="700">rise: {nice(m)}</text>
+          {/* Corner dots */}
+          <circle cx={sx(x0)} cy={sy(y0)} r="5" fill={COLORS.m} opacity=".6"/>
+          <circle cx={sx(x1)} cy={sy(y0)} r="4" fill={COLORS.m} opacity=".4"/>
+          <circle cx={sx(x1)} cy={sy(y1)} r="5" fill={COLORS.m} opacity=".6"/>
+        </g>;
+      })()}
+    </svg>
+  );
+}
+
+// ═══════════════════════════════
+//  Parameter Slider
+// ═══════════════════════════════
+function ParamSlider({label,value,min,max,step,color,onChange,icon,description}){
+  return (
+    <div style={{marginBottom:14}}>
+      <div style={{display:'flex',justifyContent:'space-between',alignItems:'baseline',marginBottom:6}}>
+        <div style={{display:'flex',alignItems:'baseline',gap:8}}>
+          <span className="math" style={{fontSize:18,fontWeight:700,color,fontStyle:'italic'}}>{label}</span>
+          <span style={{fontSize:11,color:'#3a3c55'}}>{description}</span>
+        </div>
+        <span className="mono" style={{fontSize:16,fontWeight:600,color,minWidth:50,textAlign:'right'}}>
+          {nice(value)}
+        </span>
+      </div>
+      <input type="range" className="param-slider" style={{'--tc':color}}
+        min={min} max={max} step={step} value={value}
+        onChange={e=>onChange(parseFloat(e.target.value))}/>
+    </div>
+  );
+}
+
+// ═══════════════════════════════
+//  Function Machine
+// ═══════════════════════════════
+function FunctionMachine({m,b,n,h,inputX,useFx}){
+  const [localX,setLocalX]=useState(inputX!=null?inputX:2);
+  useEffect(()=>{if(inputX!=null)setLocalX(round2(inputX));},[inputX]);
+
+  const x=localX;
+  const v=x-h;
+  const powered=Math.pow(v,n);
+  const scaled=m*powered;
+  const result=scaled+b;
+
+  const M='\u2212';
+  const stepColor='#555';
+  const valColor='#ddd';
+
+  // Build substitution display: f(xVal) = m(xVal-h)^n + b
+  const xStr=nice(x);
+  const mAbs=Math.abs(m);
+  const mSign=m<0?M:'';
+  const mShow=(mAbs===1&&n!==0)?'':`${nice(mAbs)}`;
+
+  const innerDisp=(()=>{
+    if(n===0) return null;
+    if(h===0){
+      return x<0&&n>1?`(${xStr})`:`${xStr}`;
+    }
+    return `(${xStr}\u00a0${h>0?M:'+'}\u00a0${nice(Math.abs(h))})`;
+  })();
+
+  const bPart=b===0?null:(
+    <span style={{color:COLORS.b}}>{b>0?` + ${nice(b)}`:`\u00a0${M}\u00a0${nice(Math.abs(b))}`}</span>
+  );
+
+  const lhsLabel=useFx?<><i>f</i>({xStr})</>:`y`;
+
+  let rhsNodes;
+  if(m===0&&n!==0){
+    rhsNodes=b===0?<span>0</span>:<span style={{color:COLORS.b}}>{nice(b)}</span>;
+  } else if(n===0){
+    rhsNodes=<span style={{color:COLORS.b}}>{nice(m+b)}</span>;
+  } else {
+    rhsNodes=(
+      <>
+        {mSign&&<span style={{color:COLORS.m}}>{mSign}</span>}
+        {mShow&&<span style={{color:COLORS.m}}>{mShow}</span>}
+        {innerDisp&&<span style={{color:COLORS.h}}>{innerDisp}</span>}
+        {n>1&&<sup style={{fontSize:'.6em',color:COLORS.n,position:'relative',top:'-.4em'}}>{n}</sup>}
+        {bPart}
+      </>
+    );
+  }
+
+  return (
+    <div className="machine-box" style={{animation:'slideIn .3s ease'}}>
+      <div style={{fontSize:10,fontWeight:700,color:'#6eb4e6',textTransform:'uppercase',letterSpacing:'.1em',marginBottom:10}}>
+        Function Machine
+      </div>
+
+      {/* Substitution display at top */}
+      <div className="math" style={{
+        fontSize:20,fontWeight:700,color:'#eaeaf2',lineHeight:1.5,
+        marginBottom:12,padding:'10px 14px',background:'#0c0e16',borderRadius:10,
+        border:'1px solid #2a2c40',
+      }}>
+        <span style={{color:'#888'}}>{lhsLabel}</span>
+        <span style={{color:'#3a3c55'}}> = </span>
+        {rhsNodes}
+        <span style={{color:'#3a3c55'}}> = </span>
+        <span style={{color:COLORS.curve}}>{nice(result)}</span>
+      </div>
+
+      {/* x input slider */}
+      <div style={{marginBottom:14}}>
+        <div style={{display:'flex',justifyContent:'space-between',alignItems:'baseline',marginBottom:5}}>
+          <span style={{fontSize:12,color:'#666'}}>Input value</span>
+          <span className="mono" style={{fontSize:15,fontWeight:700,color:COLORS.h}}>x = {xStr}</span>
+        </div>
+        <input type="range" className="param-slider" style={{'--tc':COLORS.h}}
+          min={-10} max={10} step={0.5} value={localX}
+          onChange={e=>setLocalX(parseFloat(e.target.value))}/>
+      </div>
+
+      {/* Step-by-step */}
+      <div style={{display:'flex',alignItems:'center',gap:0,overflowX:'auto',padding:'4px 0'}}>
+        {/* Input */}
+        <div style={{textAlign:'center',flexShrink:0}}>
+          <div style={{fontSize:9,color:stepColor,textTransform:'uppercase',fontWeight:600,marginBottom:4}}>Input</div>
+          <div className="math" style={{fontSize:22,fontWeight:700,color:COLORS.h}}>
+            <i>x</i> = {xStr}
+          </div>
+        </div>
+
+        <div style={{padding:'0 8px',flexShrink:0,color:'#3a3c55',fontSize:22}}>→</div>
+
+        {/* Shift */}
+        {h!==0&&<>
+          <div style={{textAlign:'center',flexShrink:0,background:'#0c0e16',borderRadius:10,padding:'8px 12px',border:`1px solid ${COLORS.h}20`}}>
+            <div style={{fontSize:9,color:COLORS.h,textTransform:'uppercase',fontWeight:600,marginBottom:3}}>Shift</div>
+            <div className="mono" style={{fontSize:13,color:valColor}}>
+              {nice(x)} {h>0?M:'+'} {nice(Math.abs(h))} = {nice(v)}
+            </div>
+          </div>
+          <div style={{padding:'0 8px',flexShrink:0,color:'#3a3c55',fontSize:22}}>→</div>
+        </>}
+
+        {/* Power */}
+        {n!==1&&n!==0&&<>
+          <div style={{textAlign:'center',flexShrink:0,background:'#0c0e16',borderRadius:10,padding:'8px 12px',border:`1px solid ${COLORS.n}20`}}>
+            <div style={{fontSize:9,color:COLORS.n,textTransform:'uppercase',fontWeight:600,marginBottom:3}}>Power</div>
+            <div className="mono" style={{fontSize:13,color:valColor}}>
+              {nice(v)}{sup(n)} = {nice(powered)}
+            </div>
+          </div>
+          <div style={{padding:'0 8px',flexShrink:0,color:'#3a3c55',fontSize:22}}>→</div>
+        </>}
+
+        {/* Scale */}
+        {m!==1&&m!==0&&<>
+          <div style={{textAlign:'center',flexShrink:0,background:'#0c0e16',borderRadius:10,padding:'8px 12px',border:`1px solid ${COLORS.m}20`}}>
+            <div style={{fontSize:9,color:COLORS.m,textTransform:'uppercase',fontWeight:600,marginBottom:3}}>Scale</div>
+            <div className="mono" style={{fontSize:13,color:valColor}}>
+              {nice(m)} × {nice(n===1&&h===0?v:n===0?1:powered)} = {nice(scaled)}
+            </div>
+          </div>
+          <div style={{padding:'0 8px',flexShrink:0,color:'#3a3c55',fontSize:22}}>→</div>
+        </>}
+
+        {/* Shift up */}
+        {b!==0&&<>
+          <div style={{textAlign:'center',flexShrink:0,background:'#0c0e16',borderRadius:10,padding:'8px 12px',border:`1px solid ${COLORS.b}20`}}>
+            <div style={{fontSize:9,color:COLORS.b,textTransform:'uppercase',fontWeight:600,marginBottom:3}}>Vertical Shift</div>
+            <div className="mono" style={{fontSize:13,color:valColor}}>
+              {nice(scaled)} {b>0?'+':M} {nice(Math.abs(b))} = {nice(result)}
+            </div>
+          </div>
+          <div style={{padding:'0 8px',flexShrink:0,color:'#3a3c55',fontSize:22}}>→</div>
+        </>}
+
+        {/* Output */}
+        <div style={{textAlign:'center',flexShrink:0}}>
+          <div style={{fontSize:9,color:stepColor,textTransform:'uppercase',fontWeight:600,marginBottom:4}}>Output</div>
+          <div className="math" style={{fontSize:22,fontWeight:700,color:COLORS.curve}}>
+            {nice(result)}
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// ═══════════════════════════════
+//  Insight Cards
+// ═══════════════════════════════
+function InsightCard({param,m,b,n,h}){
+  const insights={
+    m:{
+      title:'Slope / Stretch',
+      color:COLORS.m,
+      text: n===1
+        ? (m>0?`Positive slope: line rises ${nice(Math.abs(m))} for every 1 unit right`
+          :m<0?`Negative slope: line falls ${nice(Math.abs(m))} for every 1 unit right`
+          :'Zero slope: horizontal line')
+        : (m>0?`Coefficient stretches the curve${Math.abs(m)<1?' (compressed)':Math.abs(m)>1?' (stretched)':''} vertically`
+          :m<0?'Negative coefficient flips the curve upside down'
+          :'Zero: the curve collapses to a horizontal line'),
+    },
+    b:{
+      title:'Vertical Shift',
+      color:COLORS.b,
+      text: b===0?'No vertical shift — curve passes through origin (if h=0)'
+        :b>0?`Shifts the entire curve UP by ${nice(b)} units`
+        :`Shifts the entire curve DOWN by ${nice(Math.abs(b))} units`,
+    },
+    n:{
+      title:'Exponent / Degree',
+      color:COLORS.n,
+      text: n===1?'Linear: straight line'
+        :n===2?'Quadratic: U-shaped parabola (symmetric)'
+        :n===3?'Cubic: S-shaped curve (odd symmetry)'
+        :n===0?'Constant: flat horizontal line'
+        :`Degree ${n} polynomial`,
+    },
+    h:{
+      title:'Horizontal Shift',
+      color:COLORS.h,
+      text: h===0?'No horizontal shift — anchor point sits at the origin'
+        :n===1?(h>0
+          ?`Shifts the anchor point RIGHT by ${nice(h)}. For a line, this looks like moving down — watch the green dot and dashed ghost line to see the horizontal movement.`
+          :`Shifts the anchor point LEFT by ${nice(Math.abs(h))}. For a line, this looks like moving up — watch the green dot and dashed ghost line to see the horizontal movement.`)
+        :h>0?`Shifts the curve RIGHT by ${nice(h)} units — the vertex moves from (0, b) to (${nice(h)}, b)`
+        :`Shifts the curve LEFT by ${nice(Math.abs(h))} units — the vertex moves from (0, b) to (${nice(h)}, b)`,
+    },
+  };
+  const info=insights[param];
+  if(!info) return null;
+  return (
+    <div style={{
+      background:'#10121c',borderRadius:10,padding:'12px 16px',
+      border:`1px solid ${info.color}18`,marginTop:8,animation:'slideIn .3s ease',
+    }}>
+      <div style={{fontSize:9,fontWeight:700,color:info.color,textTransform:'uppercase',letterSpacing:'.1em',marginBottom:5}}>
+        {info.title}
+      </div>
+      <div style={{fontSize:13,color:'#999',lineHeight:1.5}}>{info.text}</div>
+    </div>
+  );
+}
+
+// ═══════════════════════════════════════════
+//  WORKSHEET SYSTEM
+// ═══════════════════════════════════════════
+
+// ── Question Components ──
+
+function MCQuestion({q,options,correctIdx,onCorrect,explanation,color}){
+  const [picked,setPicked]=useState(null);
+  const [revealed,setRevealed]=useState(false);
+  const isRight=picked===correctIdx;
+  return <div>
+    <div style={{fontSize:15,color:'#ccc',lineHeight:1.6,marginBottom:14}}>{q}</div>
+    <div style={{display:'flex',flexDirection:'column',gap:8}}>
+      {options.map((o,i)=>{
+        const isPicked=picked===i;
+        const showCorrect=revealed&&i===correctIdx;
+        const showWrong=revealed&&isPicked&&!isRight;
+        return <button key={i} onClick={()=>{
+          if(revealed) return;
+          setPicked(i);setRevealed(true);
+          if(i===correctIdx) setTimeout(()=>onCorrect(),800);
+        }} style={{
+          padding:'12px 16px',borderRadius:10,textAlign:'left',
+          background:showCorrect?'#5cc8b015':showWrong?'#e0605015':'#0c0e16',
+          border:`2px solid ${showCorrect?'#5cc8b050':showWrong?'#e0605050':'#1e2030'}`,
+          color:showCorrect?'#5cc8b0':showWrong?'#e06050':'#aaa',
+          fontSize:14,fontFamily:"'STIX Two Text',serif",cursor:revealed?'default':'pointer',
+          transition:'all .3s',
+        }}>{o}</button>;
+      })}
+    </div>
+    {revealed&&<div style={{marginTop:12,fontSize:13,color:'#777',lineHeight:1.6,
+      padding:'10px 14px',background:'#10121c',borderRadius:8,border:'1px solid #1a1c28',
+      animation:'slideIn .3s ease'}}>
+      {isRight?<span style={{color:'#5cc8b0',fontWeight:600}}>Correct! </span>:
+        <span style={{color:'#e06050',fontWeight:600}}>Not quite. </span>}
+      {explanation}
+    </div>}
+  </div>;
+}
+
+function InputQuestion({q,answer,tolerance,onCorrect,explanation,placeholder,color,unit}){
+  const [val,setVal]=useState('');
+  const [checked,setChecked]=useState(false);
+  const [isRight,setIsRight]=useState(false);
+  const check=()=>{
+    const v=parseFloat(val);
+    const tol=tolerance||0.1;
+    const ok=!isNaN(v)&&Math.abs(v-answer)<=tol;
+    setIsRight(ok);setChecked(true);
+    if(ok) setTimeout(()=>onCorrect(),800);
+  };
+  return <div>
+    <div style={{fontSize:15,color:'#ccc',lineHeight:1.6,marginBottom:14}}>{q}</div>
+    <div style={{display:'flex',gap:8,alignItems:'center'}}>
+      <input value={val} onChange={e=>setVal(e.target.value)}
+        onKeyDown={e=>{if(e.key==='Enter')check()}}
+        placeholder={placeholder||'?'} inputMode="decimal"
+        style={{
+          width:90,padding:'10px 14px',borderRadius:10,fontSize:18,fontWeight:600,
+          background:'#0a0b14',border:`2px solid ${checked?(isRight?'#5cc8b050':'#e0605050'):'#2a2c40'}`,
+          color:'#eee',fontFamily:"'STIX Two Text',serif",textAlign:'center',
+        }}/>
+      {unit&&<span className="math" style={{fontSize:16,color:'#666'}}>{unit}</span>}
+      <button onClick={check} style={{
+        padding:'10px 20px',borderRadius:10,border:'none',fontSize:13,fontWeight:700,
+        background:color?color+'20':'#1e1830',color:color||'#a88cdc',cursor:'pointer',
+      }}>Check</button>
+    </div>
+    {checked&&<div style={{marginTop:10,fontSize:13,color:'#777',lineHeight:1.6,
+      padding:'10px 14px',background:'#10121c',borderRadius:8,border:'1px solid #1a1c28',
+      animation:'slideIn .3s ease'}}>
+      {isRight?<span style={{color:'#5cc8b0',fontWeight:600}}>Correct! </span>:
+        <span style={{color:'#e06050',fontWeight:600}}>The answer is {answer}. </span>}
+      {explanation}
+    </div>}
+  </div>;
+}
+
+function SetAndObserve({instruction,params,setM,setB,setN,setH,startGhost,endGhost,setActiveParam,onSetGraph,children}){
+  const apply=()=>{
+    startGhost();
+    if(onSetGraph) onSetGraph();
+    if(params.m!=null)setM(params.m);
+    if(params.b!=null)setB(params.b);
+    if(params.n!=null)setN(params.n);
+    if(params.h!=null)setH(params.h);
+    if(params.focus) setActiveParam(params.focus);
+    endGhost();
+  };
+  return <div>
+    <div style={{fontSize:15,color:'#ccc',lineHeight:1.6,marginBottom:12}}>{instruction}</div>
+    <button onClick={apply} style={{
+      padding:'10px 20px',borderRadius:10,border:'2px solid #f0c86830',
+      background:'#f0c86810',color:'#f0c868',fontSize:13,fontWeight:700,
+      cursor:'pointer',marginBottom:14,transition:'all .2s',
+    }}>Set Graph →</button>
+    {children}
+  </div>;
+}
+
+function EquationBuilder({q,targetM,targetB,targetN,targetH,m,b,n,h,setM,setB,setN,setH,startGhost,endGhost,onCorrect,explanation}){
+  const [checked,setChecked]=useState(false);
+  const [isRight,setIsRight]=useState(false);
+  const check=()=>{
+    const ok=Math.abs(m-targetM)<0.1&&Math.abs(b-targetB)<0.1&&n===targetN&&Math.abs(h-targetH)<0.1;
+    setIsRight(ok);setChecked(true);
+    if(ok) setTimeout(()=>onCorrect(),800);
+  };
+  return <div>
+    <div style={{fontSize:15,color:'#ccc',lineHeight:1.6,marginBottom:12}}>{q}</div>
+    <div style={{fontSize:12,color:'#555',marginBottom:14}}>
+      Use the sliders above to build your equation — the graph updates in real-time.
+    </div>
+    <button onClick={check} style={{
+      padding:'12px 24px',borderRadius:10,border:'none',fontSize:14,fontWeight:700,
+      background:'linear-gradient(135deg,#f0c86825,#6eb4e615)',
+      color:'#f0c868',cursor:'pointer',transition:'all .2s',
+    }}>Check My Equation</button>
+    {checked&&<div style={{marginTop:10,fontSize:13,color:'#777',lineHeight:1.6,
+      padding:'10px 14px',background:'#10121c',borderRadius:8,border:'1px solid #1a1c28',
+      animation:'slideIn .3s ease'}}>
+      {isRight?<span style={{color:'#5cc8b0',fontWeight:600}}>Perfect! </span>:
+        <span style={{color:'#e06050',fontWeight:600}}>Not quite — </span>}
+      {isRight?explanation:`Target: m=${targetM}, b=${targetB}, n=${targetN}, h=${targetH}. Keep adjusting!`}
+    </div>}
+  </div>;
+}
+
+function VocabIntro({terms,children}){
+  return (
+    <div>
+      <div style={{display:'flex',flexDirection:'column',gap:8,marginBottom:16}}>
+        {terms.map((t,i)=>(
+          <div key={i} style={{
+            background:'#0c0e16',borderRadius:10,padding:'12px 16px',
+            border:`1px solid ${t.color}25`,
+          }}>
+            <div style={{fontSize:11,fontWeight:700,color:t.color,textTransform:'uppercase',letterSpacing:'.08em',marginBottom:4}}>{t.term}</div>
+            <div style={{fontSize:13,color:'#888',lineHeight:1.55}}>{t.definition}</div>
+            {t.example&&<div style={{fontSize:12,color:t.color,opacity:.6,marginTop:5,fontStyle:'italic'}}>{t.example}</div>}
+          </div>
+        ))}
+      </div>
+      {children}
+    </div>
+  );
+}
+
+// ── Worksheet Sections ──
+
+const SECTIONS=[
+  // ─────── PART 1: SLOPE ───────
+  {
+    title:'Part 1: Slope (m)',
+    color:COLORS.m,
+    intro:'Let\'s explore what the slope does to a line. Make sure the exponent is set to "linear" above.',
+    questions:[
+      {
+        type:'set_mc',
+        params:{m:1,b:0,n:1,h:0,focus:'m'},
+        instruction:'First, let\'s start with the simplest line: y = x.',
+        q:'Look at the graph. As you move right along the x-axis by 1 unit, how many units does y increase?',
+        options:['0','1','2','It depends on x'],
+        correctIdx:1,
+        explanation:'When m = 1, the line rises 1 unit for every 1 unit to the right. That\'s what slope means — rise over run.',
+      },
+      {
+        type:'set_mc',
+        params:{m:3,b:0,n:1,h:0,focus:'m'},
+        instruction:'Now let\'s make the line steeper. Click "Set Graph" to set m = 3.',
+        q:'The rise/run triangle shows on the graph. For each 1 unit right, how many units does the line rise?',
+        options:['1','2','3','6'],
+        correctIdx:2,
+        explanation:'m = 3 means "rise 3 for every run of 1." Steeper slope = bigger m value.',
+      },
+      {
+        type:'set_input',
+        params:{m:-2,b:0,n:1,h:0,focus:'m'},
+        instruction:'What about negative slope? Set m = −2.',
+        q:'When the slope is negative, the line goes which direction as you move right?',
+        inputAnswer:null,
+        mc:true,
+        options:['Upward','Downward','Stays flat','Curves'],
+        correctIdx:1,
+        explanation:'Negative slope means the line falls as you move right. m = −2 means it drops 2 units for every 1 unit right.',
+      },
+      {
+        type:'set_input',
+        params:{m:0.5,b:0,n:1,h:0,focus:'m'},
+        instruction:'Now try a fractional slope. Set m = 0.5.',
+        q:'If m = 0.5, how many units does y rise when x increases by 2?',
+        answer:1,
+        tolerance:0.1,
+        explanation:'m = 0.5 means rise 0.5 per 1 unit right. Over 2 units right: 0.5 × 2 = 1.',
+        placeholder:'?',
+      },
+    ],
+  },
+  // ─────── PART 2: Y-INTERCEPT ───────
+  {
+    title:'Part 2: Y-Intercept (b)',
+    color:COLORS.b,
+    intro:'The b value shifts the entire curve up or down. Watch the blue dot on the y-axis.',
+    questions:[
+      {
+        type:'set_mc',
+        params:{m:1,b:3,n:1,h:0,focus:'b'},
+        instruction:'Set the graph to y = x + 3.',
+        q:'Where does the line cross the y-axis?',
+        options:['At y = 0','At y = 1','At y = 3','At y = −3'],
+        correctIdx:2,
+        explanation:'The b value is exactly where the line crosses the y-axis. b = 3 means it crosses at (0, 3).',
+      },
+      {
+        type:'set_mc',
+        params:{m:1,b:-2,n:1,h:0,focus:'b'},
+        instruction:'Now set b = −2.',
+        q:'Compared to y = x, the line y = x − 2 is:',
+        options:['Steeper','Shifted left by 2','Shifted down by 2','Flipped upside down'],
+        correctIdx:2,
+        explanation:'Changing b only moves the line up or down. b = −2 shifts everything down 2 units. The slope stays the same!',
+      },
+      {
+        type:'set_input',
+        params:{m:2,b:0,n:1,h:0,focus:'b'},
+        instruction:'Set m = 2, b = 0. Now slowly increase b using the slider.',
+        q:'When you change b from 0 to 4, what happens to the slope (steepness) of the line?',
+        mc:true,
+        options:['It gets steeper','It gets flatter','Nothing — the slope stays the same','It becomes negative'],
+        correctIdx:2,
+        explanation:'b only shifts the line vertically. The slope (steepness) is controlled entirely by m. They are independent!',
+      },
+    ],
+  },
+  // ─────── PART 3: EXPONENT ───────
+  {
+    title:'Part 3: Exponent (n)',
+    color:COLORS.n,
+    intro:'The exponent changes the fundamental shape of the curve. Try each one!',
+    questions:[
+      {
+        type:'set_mc',
+        params:{m:1,b:0,n:2,h:0,focus:'n'},
+        instruction:'Switch the exponent to "quadratic" (n = 2). This gives y = x².',
+        q:'What shape does y = x² make?',
+        options:['A straight line','A U-shape (parabola)','An S-shape','A flat line'],
+        correctIdx:1,
+        explanation:'x² creates a parabola — a symmetric U-shape. Every negative x gives the same y as its positive counterpart.',
+      },
+      {
+        type:'set_mc',
+        params:{m:-1,b:0,n:2,h:0,focus:'n'},
+        instruction:'Now set m = −1 with n = 2. This gives y = −x².',
+        q:'What happened to the parabola?',
+        options:['It moved right','It moved down','It flipped upside down (∩ shape)','It became a line'],
+        correctIdx:2,
+        explanation:'A negative coefficient (m) flips the parabola upside down. It opens downward instead of upward.',
+      },
+      {
+        type:'set_mc',
+        params:{m:1,b:0,n:3,h:0,focus:'n'},
+        instruction:'Try cubic: n = 3, m = 1, b = 0.',
+        q:'The cubic y = x³ passes through the origin. What is its shape?',
+        options:['U-shape','S-shape (rises right, falls left)','Straight line','Circle'],
+        correctIdx:1,
+        explanation:'Odd exponents create S-shaped curves. x³ is negative for negative x and positive for positive x.',
+      },
+      {
+        type:'set_input',
+        params:{m:1,b:0,n:2,h:0,focus:'n'},
+        instruction:'Set y = x². Use your finger to trace the graph at x = 3.',
+        q:'What is f(3) when f(x) = x²?',
+        answer:9,
+        tolerance:0.5,
+        explanation:'f(3) = 3² = 9. The function squares whatever input you give it.',
+        placeholder:'?',
+      },
+    ],
+  },
+  // ─────── PART 4: HORIZONTAL SHIFT ───────
+  {
+    title:'Part 4: Horizontal Shift (h)',
+    color:COLORS.h,
+    intro:'The h value shifts the curve left or right. Watch the green arrow and anchor point!',
+    questions:[
+      {
+        type:'set_mc',
+        params:{m:1,b:0,n:2,h:3,focus:'h'},
+        instruction:'Set y = (x − 3)² — a parabola shifted right by 3.',
+        q:'Where is the vertex (lowest point) of this parabola?',
+        options:['At x = 0','At x = 3','At x = −3','At x = 6'],
+        correctIdx:1,
+        explanation:'When we write (x − 3)², the vertex moves to x = 3. Subtracting inside the parentheses shifts RIGHT.',
+      },
+      {
+        type:'set_mc',
+        params:{m:1,b:0,n:2,h:-2,focus:'h'},
+        instruction:'Now set h = −2, giving y = (x + 2)².',
+        q:'The vertex is now at:',
+        options:['x = 2','x = −2','x = 0','x = 4'],
+        correctIdx:1,
+        explanation:'h = −2 means (x − (−2)) = (x + 2). Adding inside shifts LEFT. The vertex is at x = −2.',
+      },
+      {
+        type:'set_mc',
+        params:{m:1,b:0,n:1,h:2,focus:'h'},
+        instruction:'Now try h = 2 with a LINEAR function (n = 1). Watch the green ghost line.',
+        q:'For a line, shifting h right by 2 gives the same visual result as:',
+        options:['Increasing m by 2','Decreasing b by 2','Increasing b by 2','Changing the exponent'],
+        correctIdx:1,
+        explanation:'For y = m(x − h) + b with m = 1, shifting right by h is the same as decreasing b by h. That\'s why we need the green anchor dot to see it\'s a horizontal shift!',
+      },
+      {
+        type:'set_mc',
+        params:{m:1,b:0,n:2,h:2,focus:'h'},
+        instruction:'Set h = 2. The equation becomes y = (x − 2)². Notice the minus sign inside.',
+        q:'Even though we write (x − 2), the parabola shifts to the RIGHT. Why?',
+        options:[
+          'Subtracting shifts right because when x = 2, the expression x − 2 = 0 (the "zero point" of the input)',
+          'Subtracting always shifts right — it\'s just a rule',
+          'The graph shifts left, not right',
+          'It only shifts right when n = 2',
+        ],
+        correctIdx:0,
+        explanation:'The vertex is where the input expression equals zero. For (x − 2), that\'s x = 2. So the vertex — and the whole curve — moves to x = 2, which is to the RIGHT. Subtracting h moves right; adding h moves left.',
+      },
+      {
+        type:'set_mc',
+        params:{m:1,b:0,n:2,h:-3,focus:'h'},
+        instruction:'Now set h = −3. The equation becomes y = (x − (−3))² = y = (x + 3)².',
+        q:'Where is the vertex of y = (x + 3)²?',
+        options:['At x = 3 (to the right)','At x = −3 (to the left)','At x = 0 (the origin)','At x = 9'],
+        correctIdx:1,
+        explanation:'When the equation says (x + 3), it\'s the same as (x − (−3)), so h = −3. The vertex is at x = −3, which is to the LEFT. Adding inside the parentheses shifts LEFT — the opposite of what you might expect!',
+      },
+    ],
+  },
+  // ─────── PART 5: FUNCTION MACHINE ───────
+  {
+    title:'Part 5: The Function Machine',
+    color:'#6eb4e6',
+    intro:'Switch to f(x) notation above and open the Function Machine. Let\'s see how input becomes output.',
+    questions:[
+      {
+        type:'set_mc',
+        params:{m:2,b:3,n:1,h:0,focus:'m'},
+        instruction:'Set f(x) = 2x + 3. Open the Function Machine and look at x = 2.',
+        q:'The function machine shows each step. What is f(2)?',
+        options:['4','5','7','8'],
+        correctIdx:2,
+        explanation:'f(2) = 2(2) + 3 = 4 + 3 = 7. The machine first scales (×2), then shifts (+3).',
+      },
+      {
+        type:'set_input',
+        params:{m:3,b:-1,n:1,h:0,focus:'m'},
+        instruction:'Set f(x) = 3x − 1.',
+        q:'What is f(3)?',
+        answer:8,
+        tolerance:0.5,
+        explanation:'f(3) = 3(3) − 1 = 9 − 1 = 8. Trace x = 3 on the graph to verify!',
+        placeholder:'?',
+      },
+      {
+        type:'set_input',
+        params:{m:1,b:0,n:2,h:0,focus:'n'},
+        instruction:'Set f(x) = x².',
+        q:'What is f(−3)?',
+        answer:9,
+        tolerance:0.5,
+        explanation:'f(−3) = (−3)² = 9. Squaring a negative makes it positive — that\'s why parabolas are symmetric!',
+        placeholder:'?',
+      },
+      {
+        type:'set_input',
+        params:{m:2,b:1,n:2,h:3,focus:'h'},
+        instruction:'Set f(x) = 2(x − 3)² + 1. Open the function machine and trace x = 5.',
+        q:'What is f(5)?',
+        answer:9,
+        tolerance:0.5,
+        explanation:'f(5) = 2(5−3)² + 1 = 2(2²) + 1 = 2(4) + 1 = 8 + 1 = 9. Four steps: shift, power, scale, translate!',
+        placeholder:'?',
+      },
+    ],
+  },
+  // ─────── PART 6: BUILD THE EQUATION ───────
+  {
+    title:'Part 6: Build the Equation',
+    color:'#f0c868',
+    intro:'Now it\'s your turn! Use the sliders to create equations that match these descriptions. The graph gives you live feedback.',
+    questions:[
+      {
+        type:'build',
+        q:'Create a line with slope 2 that crosses the y-axis at y = −1.',
+        targetM:2,targetB:-1,targetN:1,targetH:0,
+        explanation:'y = 2x − 1. Slope m = 2, y-intercept b = −1.',
+      },
+      {
+        type:'build',
+        q:'Create a line with slope −3 that crosses the y-axis at y = 4.',
+        targetM:-3,targetB:4,targetN:1,targetH:0,
+        explanation:'y = −3x + 4. Steep negative slope, high starting point.',
+      },
+      {
+        type:'build',
+        q:'Create a parabola that opens upward with its vertex at the origin.',
+        targetM:1,targetB:0,targetN:2,targetH:0,
+        explanation:'y = x². The simplest upward parabola centered at (0, 0).',
+      },
+      {
+        type:'build',
+        q:'Create a parabola that opens DOWNward with its vertex at (0, 4).',
+        targetM:-1,targetB:4,targetN:2,targetH:0,
+        explanation:'y = −x² + 4. Negative m flips it, b = 4 lifts the vertex.',
+      },
+      {
+        type:'build',
+        q:'Shift the parabola y = x² to the RIGHT by 3 units.',
+        targetM:1,targetB:0,targetN:2,targetH:3,
+        explanation:'y = (x − 3)². The vertex moves from (0,0) to (3,0).',
+      },
+      {
+        type:'build',
+        q:'Create: y = 2(x − 1)² − 3. This is a stretched parabola shifted right by 1 and down by 3.',
+        targetM:2,targetB:-3,targetN:2,targetH:1,
+        explanation:'m = 2 (stretched), h = 1 (right by 1), b = −3 (down by 3). Vertex at (1, −3).',
+      },
+    ],
+  },
+  // ═══════════════════════════════════════════
+  //  PART 7: TRANSFORMATIONS — VOCABULARY
+  // ═══════════════════════════════════════════
+  {
+    title:'Part 7: Transformation Vocabulary',
+    color:'#e88ce0',
+    intro:'In math, we use precise language for how we move and change shapes on the coordinate plane. Let\'s learn the four fundamental transformations.',
+    questions:[
+      {
+        type:'vocab_mc',
+        vocabTerms:[
+          {term:'Translation',color:'#6ecaa0',definition:'Sliding a figure to a new position without rotating, resizing, or flipping it. Every point moves the same distance in the same direction.',example:'Shifting y = x² right by 3 → y = (x−3)²'},
+          {term:'Reflection',color:'#e88ce0',definition:'Flipping a figure over a line (called the line of reflection) to create a mirror image. Distances from the mirror line are preserved.',example:'Reflecting y = x² over the x-axis → y = −x²'},
+          {term:'Dilation',color:'#e8a86c',definition:'Resizing a figure by a scale factor from a center point. The shape stays the same but gets larger or smaller.',example:'Stretching y = x² by factor 3 → y = 3x²'},
+          {term:'Rotation',color:'#6eb4e6',definition:'Turning a figure around a fixed point (center of rotation) by a certain angle. In function graphs, 180° rotation around the origin sends f(x) → −f(−x).',example:'Rotating y = x³ by 180° → y = −(−x)³ = x³ (symmetric!)'},
+        ],
+        q:'Which transformation moves every point the same distance in the same direction?',
+        options:['Reflection','Dilation','Translation','Rotation'],
+        correctIdx:2,
+        explanation:'A translation is a slide — no flipping, stretching, or turning. In our sandbox, changing b (vertical) or h (horizontal) produces translations.',
+      },
+      {
+        type:'vocab_mc',
+        vocabTerms:[
+          {term:'Rigid Transformation',color:'#5cc8b0',definition:'A transformation that preserves the size and shape of the figure. The image is congruent to the original. Translations, reflections, and rotations are rigid.'},
+          {term:'Non-rigid Transformation',color:'#e8a86c',definition:'A transformation that changes the size (but may keep the shape). Dilations are non-rigid — the image is similar but not congruent to the original.'},
+        ],
+        q:'A dilation (stretching) is which type of transformation?',
+        options:['Rigid — shape and size preserved','Non-rigid — size changes, shape preserved','Neither — it changes everything','It depends on the scale factor'],
+        correctIdx:1,
+        explanation:'Dilations change size but keep the shape. The curve remains a parabola, line, etc. — just stretched or compressed. Only translations, reflections, and rotations are rigid.',
+      },
+      {
+        type:'vocab_mc',
+        vocabTerms:[
+          {term:'Pre-image',color:'#888',definition:'The original figure before a transformation is applied.'},
+          {term:'Image',color:'#f0c868',definition:'The resulting figure after the transformation. Often labeled with prime notation: A → A\u2032 (read "A prime").'},
+        ],
+        q:'If we start with y = x² and apply a translation to get y = x² + 5, which is the "image"?',
+        options:['y = x² (the original)','y = x² + 5 (the result)','Both are images','Neither — there is no image'],
+        correctIdx:1,
+        explanation:'The image is the result of the transformation. y = x² is the pre-image and y = x² + 5 is the image.',
+      },
+      {
+        type:'vocab_mc',
+        vocabTerms:[
+          {term:'Congruent',color:'#5cc8b0',definition:'Same shape AND same size. Produced by rigid transformations (translation, reflection, rotation).'},
+          {term:'Similar',color:'#e8a86c',definition:'Same shape but possibly different size. Produced by dilations. All congruent figures are also similar, but not vice versa.'},
+        ],
+        q:'After a vertical stretch by factor 3, the image is _____ to the pre-image:',
+        options:['Congruent (same shape and size)','Similar (same shape, different size)','Neither congruent nor similar','Identical'],
+        correctIdx:1,
+        explanation:'A stretch changes size but not shape type — a parabola stays a parabola. So the image is similar to the pre-image.',
+      },
+    ],
+  },
+  // ═══════════════════════════════════════════
+  //  PART 8: TRANSLATIONS IN DEPTH
+  // ═══════════════════════════════════════════
+  {
+    title:'Part 8: Translations',
+    color:'#6ecaa0',
+    intro:'A translation slides a graph without changing its shape. Let\'s connect formal language to what the sliders do.',
+    questions:[
+      {
+        type:'set_mc',
+        params:{m:1,b:0,n:2,h:0,focus:'b'},
+        instruction:'Start with y = x². Now use the b slider to translate it UP by 4 units.',
+        q:'A vertical translation of +4 units is written as:',
+        options:['y = x² + 4','y = (x + 4)²','y = 4x²','y = x⁴'],
+        correctIdx:0,
+        explanation:'Adding outside the function shifts vertically: f(x) + k translates UP by k. Subtracting translates DOWN.',
+      },
+      {
+        type:'set_mc',
+        params:{m:1,b:0,n:2,h:0,focus:'h'},
+        instruction:'Reset to y = x². Now use the h slider to translate it RIGHT by 2.',
+        q:'A horizontal translation of 2 units to the right is written as:',
+        options:['y = x² + 2','y = x² − 2','y = (x − 2)²','y = (x + 2)²'],
+        correctIdx:2,
+        explanation:'Horizontal translations go INSIDE with the opposite sign: f(x − h) shifts RIGHT by h. This is counterintuitive — subtracting shifts right!',
+      },
+      {
+        type:'vocab_mc',
+        vocabTerms:[
+          {term:'Translation Vector',color:'#6ecaa0',definition:'Written as \u27E8a, b\u27E9 — describes the horizontal (a) and vertical (b) shift. Positive a = right, positive b = up.',example:'\u27E83, −2\u27E9 means right 3, down 2'},
+        ],
+        q:'The translation vector \u27E8−4, 5\u27E9 means:',
+        options:['Right 4, up 5','Left 4, up 5','Right 4, down 5','Left 4, down 5'],
+        correctIdx:1,
+        explanation:'Negative horizontal = left, positive vertical = up. So \u27E8−4, 5\u27E9 means left 4 and up 5.',
+      },
+      {
+        type:'set_input',
+        params:{m:1,b:0,n:2,h:0,focus:'h'},
+        instruction:'The vertex of y = x² is at (0, 0). Apply the translation vector \u27E83, 5\u27E9.',
+        q:'After this translation, the vertex is at what y-coordinate?',
+        answer:5,
+        tolerance:0.1,
+        explanation:'Translation \u27E83, 5\u27E9: vertex moves from (0,0) to (3,5). Equation: y = (x − 3)² + 5.',
+        placeholder:'y = ?',
+      },
+      {
+        type:'build',
+        q:'Apply translation vector \u27E8−4, −2\u27E9 to y = x². Build the resulting equation.',
+        targetM:1,targetB:-2,targetN:2,targetH:-4,
+        explanation:'Left 4: h = −4, giving (x+4)². Down 2: b = −2. Result: y = (x + 4)² − 2.',
+      },
+      {
+        type:'set_mc',
+        params:{m:1,b:0,n:2,h:0,focus:'b'},
+        instruction:'Consider this property of translations.',
+        q:'Translations are rigid transformations. This means:',
+        options:[
+          'The parabola gets wider or narrower',
+          'The shape and size stay exactly the same — it just moves',
+          'The parabola flips upside down',
+          'The exponent changes',
+        ],
+        correctIdx:1,
+        explanation:'Rigid means shape-preserving. The parabola keeps the same width and direction — it just slides. Size and curvature are unchanged. The image is congruent to the pre-image.',
+      },
+    ],
+  },
+  // ═══════════════════════════════════════════
+  //  PART 9: REFLECTIONS
+  // ═══════════════════════════════════════════
+  {
+    title:'Part 9: Reflections',
+    color:'#e88ce0',
+    intro:'A reflection flips a graph over a line, creating a mirror image. In our sandbox, we can reflect over the x-axis by making m negative.',
+    questions:[
+      {
+        type:'set_mc',
+        params:{m:1,b:0,n:2,h:0,focus:'m'},
+        instruction:'Start with y = x². Observe the U-shape opening upward.',
+        q:'To reflect this parabola over the x-axis (flip it upside down), we need to:',
+        options:['Add a negative sign: y = −x²','Swap x and y','Change the exponent to −2','Subtract 1 from x: y = (x−1)²'],
+        correctIdx:0,
+        explanation:'Reflecting over the x-axis means every y-value becomes its opposite: f(x) → −f(x). So x² becomes −x².',
+      },
+      {
+        type:'vocab_mc',
+        vocabTerms:[
+          {term:'Reflection over x-axis',color:'#e88ce0',definition:'Every point (x, y) maps to (x, −y). In function notation: f(x) → −f(x). This flips the graph vertically.'},
+          {term:'Reflection over y-axis',color:'#e88ce0',definition:'Every point (x, y) maps to (−x, y). In function notation: f(x) → f(−x). This flips the graph horizontally.'},
+          {term:'Line of reflection',color:'#888',definition:'The "mirror" line that each point is reflected across. Points on this line don\'t move.'},
+        ],
+        q:'In a reflection over the x-axis, which coordinates change?',
+        options:['Only x-coordinates flip sign','Only y-coordinates flip sign','Both x and y flip','Neither changes'],
+        correctIdx:1,
+        explanation:'Reflecting over the x-axis: (x, y) → (x, −y). The x stays the same, only y flips sign.',
+      },
+      {
+        type:'set_mc',
+        params:{m:1,b:0,n:3,h:0,focus:'m'},
+        instruction:'Set y = x³ (cubic, m = 1). Now change m to −1 to see y = −x³.',
+        q:'The cubic y = x³ goes up-right and down-left. After reflecting over the x-axis, y = −x³ goes:',
+        options:['Same direction — unchanged','Down-right and up-left','Only to the right','It becomes a parabola'],
+        correctIdx:1,
+        explanation:'Reflection over the x-axis flips the entire curve vertically. What was going up now goes down, and vice versa.',
+      },
+      {
+        type:'set_input',
+        params:{m:1,b:0,n:2,h:0,focus:'n'},
+        instruction:'Start with y = x², vertex at (0, 0). Reflect over the x-axis, then translate up 8.',
+        q:'The vertex of the final curve y = −x² + 8 is at what y-coordinate?',
+        answer:8,
+        tolerance:0.1,
+        explanation:'Reflect: vertex stays at (0,0) since −0 = 0. Translate up 8: vertex at (0, 8). The equation is y = −x² + 8.',
+        placeholder:'y = ?',
+      },
+      {
+        type:'build',
+        q:'Reflect y = x² over the x-axis and translate it up by 6. Build the equation.',
+        targetM:-1,targetB:6,targetN:2,targetH:0,
+        explanation:'Reflect: m = −1. Translate up 6: b = 6. Result: y = −x² + 6.',
+      },
+      {
+        type:'set_mc',
+        params:{m:1,b:0,n:2,h:0,focus:'m'},
+        instruction:'Important concept check.',
+        q:'Is a reflection a rigid transformation?',
+        options:['Yes — the shape and size don\'t change','No — it changes the direction','No — it\'s a dilation','Only sometimes'],
+        correctIdx:0,
+        explanation:'Reflections are rigid. The shape is the same size and proportion — it\'s just been flipped. The image is congruent to the pre-image.',
+      },
+    ],
+  },
+  // ═══════════════════════════════════════════
+  //  PART 10: DILATIONS
+  // ═══════════════════════════════════════════
+  {
+    title:'Part 10: Dilations',
+    color:'#e8a86c',
+    intro:'A dilation stretches or compresses a graph. The m parameter controls vertical dilation — the scale factor.',
+    questions:[
+      {
+        type:'vocab_mc',
+        vocabTerms:[
+          {term:'Vertical Stretch',color:'#e8a86c',definition:'Scale factor > 1. The graph gets narrower/steeper because y-values are multiplied by a number greater than 1.',example:'y = 3x² is a vertical stretch of y = x² by factor 3'},
+          {term:'Vertical Compression',color:'#e8a86c',definition:'Scale factor between 0 and 1. The graph gets wider/flatter because y-values are multiplied by a fraction.',example:'y = 0.25x² is a vertical compression of y = x²'},
+        ],
+        q:'If the scale factor is 4, the transformation is a:',
+        options:['Vertical compression','Vertical stretch','Horizontal shift','Reflection'],
+        correctIdx:1,
+        explanation:'Scale factor 4 > 1, so it\'s a stretch. Every y-value is multiplied by 4, making the curve steeper/narrower.',
+      },
+      {
+        type:'set_mc',
+        params:{m:1,b:0,n:2,h:0,focus:'m'},
+        instruction:'Start with y = x². Now slowly increase m to 3.',
+        q:'When m increases from 1 to 3, the parabola:',
+        options:['Gets wider and flatter','Gets narrower and steeper','Moves to the right','Flips upside down'],
+        correctIdx:1,
+        explanation:'m = 3 is a vertical stretch by factor 3. The curve becomes narrower because y-values grow 3× faster.',
+      },
+      {
+        type:'set_mc',
+        params:{m:0.25,b:0,n:2,h:0,focus:'m'},
+        instruction:'Now set m = 0.25 (one quarter).',
+        q:'When 0 < m < 1, the parabola:',
+        options:['Gets narrower','Gets wider and flatter','Disappears','Flips'],
+        correctIdx:1,
+        explanation:'m between 0 and 1 is a vertical compression. The curve spreads out because y-values are reduced.',
+      },
+      {
+        type:'set_input',
+        params:{m:1,b:0,n:2,h:0,focus:'m'},
+        instruction:'For y = x², the point (2, 4) is on the curve. Apply a vertical stretch by factor 3: y = 3x².',
+        q:'After the dilation, what is the y-value when x = 2?',
+        answer:12,
+        tolerance:0.5,
+        explanation:'y = 3(2²) = 3(4) = 12. Every y-value is multiplied by the scale factor.',
+        placeholder:'y = ?',
+      },
+      {
+        type:'set_mc',
+        params:{m:1,b:0,n:2,h:0,focus:'m'},
+        instruction:'Consider the definition.',
+        q:'Dilations are which type of transformation?',
+        options:['Rigid — preserves size and shape','Non-rigid — changes size, preserves shape','Neither rigid nor non-rigid','Both rigid and non-rigid'],
+        correctIdx:1,
+        explanation:'Dilations are non-rigid: they change size but keep the same shape type. The image is similar (not congruent) to the pre-image.',
+      },
+      {
+        type:'build',
+        q:'Create a parabola stretched by factor 2, shifted right 1, and up 3.',
+        targetM:2,targetB:3,targetN:2,targetH:1,
+        explanation:'Stretch 2: m = 2. Right 1: h = 1. Up 3: b = 3. Result: y = 2(x − 1)² + 3.',
+      },
+    ],
+  },
+  // ═══════════════════════════════════════════
+  //  PART 11: COMBINING TRANSFORMATIONS
+  // ═══════════════════════════════════════════
+  {
+    title:'Part 11: Combining Transformations',
+    color:'#f0c868',
+    intro:'Real-world problems combine multiple transformations. Let\'s practice reading equations, identifying each transformation, and understanding why order matters.',
+    questions:[
+      {
+        type:'set_mc',
+        params:{m:-2,b:5,n:2,h:3,focus:'m'},
+        instruction:'Set the graph to y = −2(x − 3)² + 5.',
+        q:'How many transformations have been applied to the parent function y = x²?',
+        options:['1','2','3','4'],
+        correctIdx:3,
+        explanation:'Four transformations: (1) reflection over x-axis (negative), (2) vertical stretch by 2, (3) translation right 3, (4) translation up 5.',
+      },
+      {
+        type:'set_mc',
+        params:{m:-2,b:5,n:2,h:3,focus:'h'},
+        instruction:'Still looking at y = −2(x − 3)² + 5.',
+        q:'What are the coordinates of the vertex?',
+        options:['(0, 0)','(3, 5)','(−3, 5)','(3, −5)'],
+        correctIdx:1,
+        explanation:'The vertex of y = m(x−h)²+b is at (h, b). Here that\'s (3, 5). Reflection and stretch don\'t move the vertex — they change the shape around it.',
+      },
+      {
+        type:'set_mc',
+        params:{m:-2,b:5,n:2,h:3,focus:'m'},
+        instruction:'Same equation: y = −2(x − 3)² + 5.',
+        q:'This parabola opens upward or downward?',
+        options:['Upward — b is positive','Downward — m is negative','Upward — h is positive','Can\'t tell without graphing'],
+        correctIdx:1,
+        explanation:'The sign of m determines direction. Negative m = reflected over x-axis = opens downward. The b value shifts the vertex up, not the direction.',
+      },
+      {
+        type:'vocab_mc',
+        vocabTerms:[
+          {term:'Order of Transformations',color:'#f0c868',definition:'The order you apply transformations matters! Generally: (1) horizontal shifts, (2) stretches/reflections, (3) vertical shifts. Applying them in different orders gives different results.'},
+        ],
+        q:'Start with y = x². First reflect (→ −x²), then translate up 4 (→ −x²+4). Now try: first translate up 4 (→ x²+4), then reflect (→ −(x²+4) = −x²−4). Same result?',
+        options:['Yes — order doesn\'t matter','No — first gives y = −x²+4, second gives y = −x²−4','No — first gives y = −x²−4, second gives y = −x²+4','They\'re the same equation written differently'],
+        correctIdx:1,
+        explanation:'Different results! Reflect then up 4: vertex at (0,4). Up 4 then reflect: vertex at (0,−4). The order of transformations changes the outcome.',
+      },
+      {
+        type:'set_mc',
+        params:{m:-2,b:5,n:2,h:3,focus:'m'},
+        instruction:'Look at y = −2(x − 3)² + 5 and identify all transformations.',
+        q:'Which of these is NOT a transformation applied to y = x² to get y = −2(x−3)²+5?',
+        options:['Reflection over x-axis','Vertical stretch by 2','Horizontal translation right 3','Rotation by 90°'],
+        correctIdx:3,
+        explanation:'There is no rotation here. The transformations are: reflection (negative m), stretch (|m| = 2), horizontal translation (h = 3), and vertical translation (b = 5).',
+      },
+      {
+        type:'build',
+        q:'Apply these transformations to y = x² in order: reflect over x-axis, stretch by 3, shift left 2, shift down 1.',
+        targetM:-3,targetB:-1,targetN:2,targetH:-2,
+        explanation:'Reflect + stretch 3: m = −3. Left 2: h = −2. Down 1: b = −1. Result: y = −3(x + 2)² − 1.',
+      },
+      {
+        type:'build',
+        q:'Build y = 0.5(x − 4)² + 2. Name each transformation: compression by ½, right 4, up 2.',
+        targetM:0.5,targetB:2,targetN:2,targetH:4,
+        explanation:'Compression ½: m = 0.5. Right 4: h = 4. Up 2: b = 2. The parabola is wider than y = x² and centered at (4, 2).',
+      },
+    ],
+  },
+];
+
+function Worksheet({m,b,n,h,setM,setB,setN,setH,startGhost,endGhost,setActiveParam,onSetGraph,
+  sectionIdx,setSectionIdx,questionIdx,setQuestionIdx,completed,setCompleted,totalQ,score,pct,onReset}){
+
+  const section=SECTIONS[sectionIdx];
+  const question=section?.questions[questionIdx];
+  const key=`${sectionIdx}_${questionIdx}`;
+  const isDone=completed[key];
+  const doneCount=Object.keys(completed).length;
+
+  const advance=()=>{
+    setCompleted(prev=>({...prev,[key]:true}));
+    setTimeout(()=>{
+      if(questionIdx<section.questions.length-1){
+        setQuestionIdx(qi=>qi+1);
+      } else if(sectionIdx<SECTIONS.length-1){
+        setSectionIdx(si=>si+1);
+        setQuestionIdx(0);
+      }
+    },300);
+  };
+
+  return (
+    <div style={{marginTop:32,borderTop:'1px solid #1a1c28',paddingTop:28}}>
+
+      {/* Progress indicator + reset */}
+      <div style={{display:'flex',alignItems:'center',justifyContent:'space-between',marginBottom:16,flexWrap:'wrap',gap:8}}>
+        <div style={{display:'flex',alignItems:'center',gap:10}}>
+          <div className="mono" style={{fontSize:13,color:'#888'}}>{doneCount}/{totalQ}</div>
+          <div style={{width:90,height:6,borderRadius:3,background:'#1a1c28',overflow:'hidden'}}>
+            <div style={{width:`${pct}%`,height:'100%',borderRadius:3,
+              background:'linear-gradient(90deg,#f0c868,#6eb4e6)',transition:'width .5s ease'}}/>
+          </div>
+          <div className="mono" style={{fontSize:12,color:'#f0c868'}}>{pct}%</div>
+        </div>
+        <button onClick={onReset} style={{
+          padding:'5px 12px',borderRadius:8,border:'1px solid #e0605030',
+          background:'#e0605010',color:'#e06050',fontSize:11,fontWeight:600,cursor:'pointer',
+        }}>Reset</button>
+      </div>
+
+      {/* Current section */}
+      {section&&(
+        <div style={{animation:'fadeIn .3s ease'}}>
+          <div style={{
+            background:'#10121c',borderRadius:14,padding:'20px 22px',
+            border:`1px solid ${section.color}18`,marginBottom:16,
+          }}>
+            <div style={{fontSize:10,fontWeight:700,color:section.color,textTransform:'uppercase',
+              letterSpacing:'.1em',marginBottom:8}}>{section.title}</div>
+            <div style={{fontSize:14,color:'#888',lineHeight:1.6}}>{section.intro}</div>
+          </div>
+
+          {/* Question dots */}
+          <div style={{display:'flex',gap:6,marginBottom:16,flexWrap:'wrap'}}>
+            {section.questions.map((_,qi)=>{
+              const qk=`${sectionIdx}_${qi}`;
+              const qDone=completed[qk];
+              const isCurrent=qi===questionIdx;
+              return <button key={qi} onClick={()=>setQuestionIdx(qi)}
+                style={{
+                  width:32,height:32,borderRadius:8,
+                  border:`2px solid ${isCurrent?section.color+'60':qDone?'#5cc8b030':'#1e2030'}`,
+                  background:qDone?'#5cc8b010':isCurrent?section.color+'10':'transparent',
+                  color:qDone?'#5cc8b0':isCurrent?section.color:'#444',
+                  fontSize:13,fontWeight:700,cursor:'pointer',transition:'all .2s',
+                }}>{qDone?'✓':qi+1}</button>;
+            })}
+          </div>
+
+          {/* Question card */}
+          {question&&(
+            <div key={key} style={{
+              background:'#12141e',borderRadius:14,padding:'22px 24px',
+              border:`1px solid ${isDone?'#5cc8b020':'#1c1d2a'}`,
+              animation:'slideIn .3s ease',
+            }}>
+              <div style={{fontSize:10,color:'#3a3c55',marginBottom:6}}>
+                Question {questionIdx+1} of {section.questions.length}
+              </div>
+
+              {/* SET + MC */}
+              {(question.type==='set_mc'||question.type==='set_input')&&(
+                <SetAndObserve
+                  instruction={question.instruction}
+                  params={question.params}
+                  setM={setM} setB={setB} setN={setN} setH={setH}
+                  startGhost={startGhost} endGhost={endGhost} setActiveParam={setActiveParam}
+                  onSetGraph={onSetGraph}
+                >
+                  {question.mc||question.options&&!question.answer?(
+                    <MCQuestion q={question.q} options={question.options}
+                      correctIdx={question.correctIdx} explanation={question.explanation}
+                      onCorrect={advance} color={section.color}/>
+                  ):(
+                    <InputQuestion q={question.q} answer={question.answer}
+                      tolerance={question.tolerance} explanation={question.explanation}
+                      onCorrect={advance} placeholder={question.placeholder}
+                      color={section.color}/>
+                  )}
+                </SetAndObserve>
+              )}
+
+              {/* BUILD */}
+              {question.type==='build'&&(
+                <EquationBuilder q={question.q}
+                  targetM={question.targetM} targetB={question.targetB}
+                  targetN={question.targetN} targetH={question.targetH}
+                  m={m} b={b} n={n} h={h}
+                  setM={setM} setB={setB} setN={setN} setH={setH}
+                  startGhost={startGhost} endGhost={endGhost}
+                  onCorrect={advance} explanation={question.explanation}/>
+              )}
+
+              {/* VOCAB + MC */}
+              {question.type==='vocab_mc'&&(
+                <VocabIntro terms={question.vocabTerms}>
+                  <MCQuestion q={question.q} options={question.options}
+                    correctIdx={question.correctIdx} explanation={question.explanation}
+                    onCorrect={advance} color={section.color}/>
+                </VocabIntro>
+              )}
+
+              {isDone&&<div style={{marginTop:12,display:'flex',alignItems:'center',gap:6,color:'#5cc8b0',fontWeight:600,fontSize:13}}>
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#5cc8b0" strokeWidth="3"><polyline points="20 6 9 17 4 12"/></svg>
+                Completed
+              </div>}
+            </div>
+          )}
+
+          {/* Section nav — below the question box */}
+          <div style={{display:'flex',gap:6,flexWrap:'wrap',marginTop:16}}>
+            {SECTIONS.map((s,i)=>{
+              const sDone=s.questions.every((_,qi)=>completed[`${i}_${qi}`]);
+              return <button key={i} onClick={()=>{setSectionIdx(i);setQuestionIdx(0)}}
+                style={{
+                  padding:'7px 14px',borderRadius:8,fontSize:11,fontWeight:600,
+                  border:`1.5px solid ${sectionIdx===i?s.color+'50':'#1e2030'}`,
+                  background:sectionIdx===i?s.color+'12':'transparent',
+                  color:sectionIdx===i?s.color:sDone?'#5cc8b0':'#555',
+                  cursor:'pointer',transition:'all .2s',
+                }}>
+                {sDone?'✓ ':''}{s.title}
+              </button>;
+            })}
+          </div>
+
+          {/* Navigation */}
+          <div style={{display:'flex',gap:8,marginTop:14,justifyContent:'space-between'}}>
+            <button onClick={()=>{
+              if(questionIdx>0) setQuestionIdx(qi=>qi-1);
+              else if(sectionIdx>0){setSectionIdx(si=>si-1);setQuestionIdx(SECTIONS[sectionIdx-1].questions.length-1);}
+            }} style={{
+              padding:'10px 18px',borderRadius:8,border:'1px solid #1e2030',
+              background:'transparent',color:'#555',fontSize:12,fontWeight:600,cursor:'pointer',
+            }}>← Previous</button>
+            <button onClick={()=>{
+              if(questionIdx<section.questions.length-1) setQuestionIdx(qi=>qi+1);
+              else if(sectionIdx<SECTIONS.length-1){setSectionIdx(si=>si+1);setQuestionIdx(0);}
+            }} style={{
+              padding:'10px 18px',borderRadius:8,border:`1px solid ${section.color}30`,
+              background:section.color+'10',color:section.color,fontSize:12,fontWeight:600,cursor:'pointer',
+            }}>Next →</button>
+          </div>
+        </div>
+      )}
+
+      {/* Completion */}
+      {pct===100&&(
+        <div style={{
+          marginTop:24,background:'linear-gradient(135deg,#5cc8b010,#f0c86810)',
+          borderRadius:14,padding:'24px',border:'1px solid #5cc8b020',
+          textAlign:'center',animation:'slideIn .5s ease',
+        }}>
+          <div style={{fontSize:28}}>🎉</div>
+          <div style={{fontSize:18,fontWeight:700,color:'#eee',marginTop:8}}>Worksheet Complete!</div>
+          <div style={{fontSize:14,color:'#888',marginTop:6}}>
+            You've mastered slope, intercepts, exponents, shifts, and function notation. Keep experimenting in the sandbox!
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
+const TUTORIAL_STEPS=[
+  {icon:'📐',title:'Welcome to Graph Sandbox!',body:'This interactive tool helps you build intuition for graphing equations. Let\'s take a 30-second tour of the key parts.'},
+  {icon:'📈',title:'The Interactive Graph',body:'The graph on the left shows your equation as a visual curve. Touch or click anywhere on the graph to read exact x and y values at that point.'},
+  {icon:'🎚️',title:'The Sliders',body:'The three sliders control the equation parameters:\n• m — slope or stretch\n• b — vertical shift (y-intercept)\n• h — horizontal shift\n\nDrag any slider and watch the graph update instantly!'},
+  {icon:'🔢',title:'The Live Equation',body:'Below the graph, the equation updates in real time as you adjust sliders. The colored letters match the slider colors — orange for m, blue for b, green for h.'},
+  {icon:'⚡',title:'Quick Presets',body:'Use the preset buttons (y=0, y=x, y=x², y=x³) to jump straight to common parent functions and start exploring from there.'},
+  {icon:'📝',title:'Guided Worksheet',body:'Work through the guided questions below the sandbox. Each question sets the graph to a specific equation — just read the graph and answer! You can always reset your progress.'},
+  {icon:'🎉',title:'You\'re ready!',body:'Start by dragging the m slider and watching the line change slope. Then try b and h. When you\'re comfortable, dive into the worksheet questions!'},
+];
+
+function Tutorial({onClose}){
+  const [step,setStep]=useState(0);
+  const s=TUTORIAL_STEPS[step];
+  const isLast=step===TUTORIAL_STEPS.length-1;
+  return (
+    <div className="tutorial-overlay" onClick={e=>{if(e.target===e.currentTarget)onClose()}}>
+      <div className="tutorial-card">
+        <div style={{fontSize:36,marginBottom:12,textAlign:'center'}}>{s.icon}</div>
+        <h2 style={{fontSize:20,fontWeight:700,color:'#eaeaf2',marginBottom:10,textAlign:'center'}}>{s.title}</h2>
+        <p style={{fontSize:14,color:'#999',lineHeight:1.7,marginBottom:20,whiteSpace:'pre-line'}}>{s.body}</p>
+        {/* Step dots */}
+        <div style={{display:'flex',justifyContent:'center',gap:6,marginBottom:20}}>
+          {TUTORIAL_STEPS.map((_,i)=>(
+            <button key={i} onClick={()=>setStep(i)} style={{
+              width:8,height:8,borderRadius:'50%',border:'none',cursor:'pointer',
+              background:i===step?'#f0c868':'#2a2c40',transition:'background .2s',padding:0,
+            }}/>
+          ))}
+        </div>
+        <div style={{display:'flex',gap:10}}>
+          <button onClick={onClose} style={{
+            flex:1,padding:'12px',borderRadius:10,border:'1px solid #2a2c40',
+            background:'transparent',color:'#555',fontSize:13,fontWeight:600,cursor:'pointer',
+          }}>Skip</button>
+          <button onClick={()=>isLast?onClose():setStep(s=>s+1)} style={{
+            flex:2,padding:'12px',borderRadius:10,border:'none',
+            background:'linear-gradient(135deg,#f0c868,#6eb4e6)',
+            color:'#12141e',fontSize:14,fontWeight:700,cursor:'pointer',
+          }}>{isLast?'Get Started!':'Next →'}</button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// ═══════════════════════════════
+//  Main App
+// ═══════════════════════════════
+function App(){
+  const [m,setM]=useState(1);
+  const [b,setB]=useState(0);
+  const [n,setN]=useState(1);
+  const [h,setH]=useState(0);
+  const [wsSection,setWsSection]=useState(0);
+  const [wsQuestion,setWsQuestion]=useState(0);
+  const [wsCompleted,setWsCompleted]=useState({});
+  const resetWorksheet=()=>{setWsSection(0);setWsQuestion(0);setWsCompleted({});};
+  const totalQ=SECTIONS.reduce((a,s)=>a+s.questions.length,0);
+  const wsScore=Object.keys(wsCompleted).length;
+  const wsPct=Math.round(wsScore/totalQ*100);
+  const [useFx,setUseFx]=useState(false);
+  const [showMachine,setShowMachine]=useState(false);
+  const [activeParam,setActiveParam]=useState('m');
+  const [probeX,setProbeX]=useState(null);
+  const [probeY,setProbeY]=useState(null);
+  const [showProbe,setShowProbe]=useState(false);
+
+  // Ghost curve (shows previous state when dragging)
+  const [ghost,setGhost]=useState({m:1,b:0,n:1,h:0});
+  const [showGhost,setShowGhost]=useState(false);
+  const [ghostKey,setGhostKey]=useState(0);
+  const [setGraphKey,setSetGraphKey]=useState(0);
+  const [isLandscape,setIsLandscape]=useState(false);
+  const ghostTimer=useRef(null);
+  const [showTutorial,setShowTutorial]=useState(true);
+
+  useEffect(()=>{
+    const mq=window.matchMedia('(min-aspect-ratio:1/1) and (min-width:640px)');
+    const update=()=>setIsLandscape(mq.matches);
+    update();
+    mq.addEventListener('change',update);
+    return ()=>mq.removeEventListener('change',update);
+  },[]);
+
+  const startGhost=()=>{
+    setGhost({m,b,n,h});
+    setShowGhost(true);
+    if(ghostTimer.current) clearTimeout(ghostTimer.current);
+  };
+  const endGhost=()=>{
+    if(ghostTimer.current) clearTimeout(ghostTimer.current);
+    ghostTimer.current=setTimeout(()=>setShowGhost(false),1600);
+  };
+  const handleSetGraph=()=>{
+    setSetGraphKey(k=>k+1);
+    setGhostKey(k=>k+1);
+  };
+
+  const handleProbe=(x,y)=>{setProbeX(x);setProbeY(y);setShowProbe(true)};
+  const handleProbeEnd=()=>{setShowProbe(false)};
+
+  // Presets
+  const presets=[
+    {label:'y = 0',m:0,b:0,n:1,h:0},
+    {label:'y = x',m:1,b:0,n:1,h:0},
+    {label:'y = x²',m:1,b:0,n:2,h:0},
+    {label:'y = x³',m:1,b:0,n:3,h:0},
+  ];
+
+  const applyPreset=(p)=>{
+    startGhost();
+    setM(p.m);setB(p.b);setN(p.n);setH(p.h);
+    endGhost();
+  };
+
+  return (
+    <div className="safe-top safe-bottom" style={{minHeight:'100vh'}}>
+      {showTutorial&&<Tutorial onClose={()=>setShowTutorial(false)}/>}
+      <div style={{position:'fixed',inset:0,opacity:.01,pointerEvents:'none',
+        backgroundImage:'radial-gradient(circle at 30% 20%,#6eb4e6 1px,transparent 1px)',
+        backgroundSize:'60px 60px'}}/>
+
+      {/* Header */}
+      <header className="compact-header" style={{padding:'18px 22px 10px',borderBottom:'1px solid #181a24',display:'flex',alignItems:'center',justifyContent:'space-between',flexWrap:'wrap',gap:10}}>
+        <div>
+          <h1 className="math" style={{fontWeight:700,fontSize:23,
+            background:'linear-gradient(135deg,#f0c868 20%,#6eb4e6 80%)',WebkitBackgroundClip:'text',WebkitTextFillColor:'transparent'}}>
+            Graph Sandbox
+          </h1>
+          <p style={{fontSize:10,color:'#3a3c50',marginTop:1}}>Explore how each parameter shapes the curve</p>
+        </div>
+        <div style={{display:'flex',gap:4,alignItems:'center'}}>
+          <button className={`toggle-chip${!useFx?' active':''}`} style={{'--tc':'#888'}}
+            onClick={()=>setUseFx(false)}>y =</button>
+          <button className={`toggle-chip${useFx?' active':''}`} style={{'--tc':'#6eb4e6'}}
+            onClick={()=>setUseFx(true)}><i className="math">f</i>(x) =</button>
+          <button onClick={()=>setShowTutorial(true)} style={{
+            padding:'6px 10px',borderRadius:8,border:'1px solid #2a2c40',
+            background:'#12141e',color:'#555',fontSize:12,fontWeight:700,cursor:'pointer',
+            marginLeft:4,
+          }} title="Help / Tutorial">?</button>
+        </div>
+      </header>
+
+      <main style={{maxWidth:1100,margin:'0 auto',padding:'16px 18px 40px'}}>
+        <div className="app-layout">
+
+        {/* ── LEFT: Graph column ── */}
+        <div className="graph-col">
+          {/* Graph */}
+          <Graph m={m} b={b} n={n} h={h}
+            ghostM={ghost.m} ghostB={ghost.b} ghostN={ghost.n} ghostH={ghost.h}
+            showGhost={showGhost} ghostKey={ghostKey} setGraphKey={setGraphKey}
+            onProbe={handleProbe} onProbeEnd={handleProbeEnd}/>
+
+          {/* Equation display — below the graph, 1.5× larger */}
+          <EquationDisplay m={m} b={b} n={n} h={h} useFx={useFx}
+            probeX={probeX} probeY={probeY} showProbe={showProbe}/>
+
+          {/* Probe hint */}
+          <div style={{textAlign:'center',padding:'2px 0 6px',fontSize:10,color:'#2a2c40'}}>
+            Touch and drag on the graph to trace the curve
+          </div>
+        </div>
+
+        {/* ── RIGHT: Controls column ── */}
+        <div className="controls-col">
+
+        {/* Exponent selector */}
+        <div style={{display:'flex',alignItems:'center',gap:10,padding:'12px 0 4px'}}>
+          <span className="math" style={{fontSize:16,fontWeight:700,color:COLORS.n,fontStyle:'italic'}}>n</span>
+          <span style={{fontSize:11,color:'#3a3c55'}}>exponent</span>
+          <div style={{display:'flex',gap:5,marginLeft:'auto'}}>
+            {[0,1,2,3].map(v=>(
+              <button key={v} className={`toggle-chip${n===v?' active':''}`}
+                style={{'--tc':COLORS.n}}
+                onClick={()=>{startGhost();setN(v);setActiveParam('n');endGhost()}}>
+                {v===0?'constant':v===1?'linear':v===2?'quadratic':'cubic'}
+              </button>
+            ))}
+          </div>
+        </div>
+
+        {/* Sliders */}
+        <div style={{background:'#10121c',borderRadius:14,padding:'18px 20px',border:'1px solid #1a1c28',marginTop:8}}>
+          <ParamSlider label="m" description={n===1?"slope":"coefficient"} color={COLORS.m}
+            value={m} min={-5} max={5} step={0.25}
+            onChange={v=>{startGhost();setM(v);setActiveParam('m');endGhost()}}/>
+          <ParamSlider label="b" description="y-intercept / vertical shift" color={COLORS.b}
+            value={b} min={-6} max={6} step={0.5}
+            onChange={v=>{startGhost();setB(v);setActiveParam('b');endGhost()}}/>
+          <ParamSlider label="h" description="horizontal shift" color={COLORS.h}
+            value={h} min={-5} max={5} step={0.5}
+            onChange={v=>{startGhost();setH(v);setActiveParam('h');endGhost()}}/>
+        </div>
+
+        {/* Presets — quick parent functions */}
+        <div style={{marginTop:10}}>
+          <div style={{fontSize:9,fontWeight:700,color:'#3a3c55',textTransform:'uppercase',letterSpacing:'.1em',marginBottom:6}}>
+            Quick Presets
+          </div>
+          <div style={{display:'flex',flexWrap:'wrap',gap:6}}>
+            {presets.map((p,i)=>(
+              <button key={i} className="toggle-chip" style={{'--tc':COLORS.curve}}
+                onClick={()=>applyPreset(p)}>
+                <span className="math" style={{fontSize:12}}>{p.label}</span>
+              </button>
+            ))}
+          </div>
+        </div>
+
+        {/* Insight card */}
+        <InsightCard param={activeParam} m={m} b={b} n={n} h={h}/>
+
+        {/* Worksheet — shown here in landscape so it's adjacent to the graph */}
+        {isLandscape&&(
+          <Worksheet m={m} b={b} n={n} h={h} setM={setM} setB={setB} setN={setN} setH={setH}
+            startGhost={startGhost} endGhost={endGhost} setActiveParam={setActiveParam}
+            onSetGraph={handleSetGraph}
+            sectionIdx={wsSection} setSectionIdx={setWsSection}
+            questionIdx={wsQuestion} setQuestionIdx={setWsQuestion}
+            completed={wsCompleted} setCompleted={setWsCompleted}
+            totalQ={totalQ} score={wsScore} pct={wsPct} onReset={resetWorksheet}/>
+        )}
+
+        {/* Function Machine toggle */}
+        <div style={{marginTop:14}}>
+          <button className={`toggle-chip${showMachine?' active':''}`}
+            style={{'--tc':'#6eb4e6',fontSize:13,padding:'10px 18px',width:'100%'}}
+            onClick={()=>setShowMachine(!showMachine)}>
+            {showMachine?'Hide':'Show'} Function Machine
+          </button>
+        </div>
+        {showMachine&&(
+          <div style={{marginTop:10}}>
+            <FunctionMachine m={m} b={b} n={n} h={h}
+              inputX={showProbe&&probeX!=null?probeX:2}
+              useFx={useFx}/>
+          </div>
+        )}
+
+        {/* Notation explanation */}
+        <div style={{
+          marginTop:14,background:'#10121c',borderRadius:12,padding:'16px 20px',
+          border:'1px solid #1a1c28',
+        }}>
+          <div style={{fontSize:9,fontWeight:700,color:'#6eb4e6',textTransform:'uppercase',letterSpacing:'.1em',marginBottom:10}}>
+            {useFx?'Function Notation':'Equation Notation'}
+          </div>
+          {useFx?(
+            <div style={{fontSize:13,color:'#888',lineHeight:1.7}}>
+              <span className="math" style={{color:'#bbb'}}><i>f</i>(<i>x</i>)</span> means "<i>f</i> is a function of <i>x</i>."
+              You put <span className="math" style={{color:COLORS.h}}><i>x</i></span> in and get <span className="math" style={{color:COLORS.curve}}><i>f</i>(<i>x</i>)</span> out.
+              The graph shows every possible input-output pair. Try the Function Machine above to see each step!
+            </div>
+          ):(
+            <div style={{fontSize:13,color:'#888',lineHeight:1.7}}>
+              <span className="math" style={{color:'#bbb'}}>y = mx + b</span> is slope-intercept form.
+              <span style={{color:COLORS.m}}> m</span> controls steepness,
+              <span style={{color:COLORS.b}}> b</span> is where it crosses the y-axis.
+              Switch to <i className="math">f</i>(<i>x</i>) to see it as a function machine.
+            </div>
+          )}
+        </div>
+
+        </div>{/* end controls-col */}
+        </div>{/* end app-layout */}
+
+        {/* ═══════════════════════════════════════
+             GUIDED WORKSHEET (portrait only — landscape renders inside controls column)
+            ═══════════════════════════════════════ */}
+        {!isLandscape&&(
+          <Worksheet m={m} b={b} n={n} h={h} setM={setM} setB={setB} setN={setN} setH={setH}
+            startGhost={startGhost} endGhost={endGhost} setActiveParam={setActiveParam}
+            onSetGraph={handleSetGraph}
+            sectionIdx={wsSection} setSectionIdx={setWsSection}
+            questionIdx={wsQuestion} setQuestionIdx={setWsQuestion}
+            completed={wsCompleted} setCompleted={setWsCompleted}
+            totalQ={totalQ} score={wsScore} pct={wsPct} onReset={resetWorksheet}/>
+        )}
+
+      </main>
+    </div>
+  );
+}
+
+const root=ReactDOM.createRoot(document.getElementById('root'));
+root.render(React.createElement(App));
+</script>
+<script>
+if('serviceWorker' in navigator) {
+  window.addEventListener('load', () => {
+    navigator.serviceWorker.register('./sw.js').then(reg => {
+      // Trigger proactive CDN caching once SW is ready
+      if (navigator.serviceWorker.controller) {
+        navigator.serviceWorker.controller.postMessage('precache-cdn');
+      }
+      navigator.serviceWorker.ready.then(r => {
+        if (r.active) r.active.postMessage('precache-cdn');
+      });
+    }).catch(() => {});
+  });
+}
+</script>
+</body>
+</html>
